@@ -1,1 +1,36 @@
-our project for class
+# Sorghum Variety Identification
+
+## Proposed On-Device Identification
+
+The planned workflow identifies a sorghum cultivar from a photo of the whole plant. A compact INT8-quantized MobileNetV3-Small model classifies among the sorghum cultivars represented in its verified training data. A small Bayesian probabilistic graphical model (PGM) can optionally combine the model's probabilities with validated, independent evidence. The app should report an uncertain or unrecognized result rather than force a cultivar prediction when confidence is low.
+
+This is a proposed extension; it is not part of the current phase-one capture workflow. The model and PGM parameters are bundled in the Android app, and inference requires no network connection. Training and validation should use verified sorghum cultivar labels, include photos from the growth stages expected in use, and keep photos of the same plant or plot together when splitting data.
+
+```mermaid
+flowchart TD
+	subgraph PREP["Model preparation"]
+		DATA["Verified whole-plant sorghum photos with cultivar labels"] --> TRAIN["Train and validate sorghum cultivar classifier"]
+		TRAIN --> QUANTIZE["Quantize to INT8 and calibrate probabilities"]
+		QUANTIZE --> MODEL["Package MobileNetV3-Small sorghum model"]
+		DATA --> PGMFIT["Fit and validate small Bayesian network"]
+		PGMFIT --> PGM_PARAMS["Package Bayesian network parameters"]
+	end
+
+	subgraph DEVICE["Android app - offline"]
+		PHOTO["Capture whole-plant photo"] --> PREPROCESS["Crop, resize, normalize"]
+		PREPROCESS --> INFER["On-device INT8 image classification"]
+		INFER --> PROBS["Probabilities for known sorghum cultivars"]
+		PROBS --> USE_PGM{"Use Bayesian PGM?"}
+		USE_PGM -->|Yes| INFER_PGM["Combine with validated independent evidence"]
+		INFER_PGM --> POSTERIOR["Posterior sorghum cultivar probabilities"]
+		USE_PGM -->|No| POSTERIOR
+		POSTERIOR --> CONFIDENCE{"Confidence above threshold?"}
+		CONFIDENCE -->|Yes| RESULT["Show predicted sorghum cultivar and confidence"]
+		CONFIDENCE -->|No| UNCERTAIN["Show uncertain or unrecognized cultivar"]
+	end
+
+	MODEL -. "Bundled with app" .-> INFER
+	PGM_PARAMS -. "Bundled with app" .-> INFER_PGM
+```
+
+Mermaid source: [sorghum_variety_identification.mermaid](sorghum_variety_identification.mermaid).

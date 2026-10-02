@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-feature android:name="android.hardware.camera.any" android:required="true" />
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- The app must work fully offline. Removing INTERNET here also strips it if any
+         library tries to merge it in, so offline operation is enforced by the platform. -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <!-- Merged in by an AndroidX library. It only reads connectivity status, but the app has
+         no use for it, so it is removed to keep the permission list free of network access. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+
+    <!-- allowBackup is off so no app data can be copied to cloud backups. -->
+    <application
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.SorghumCapture">
+
+        <!-- Locked to portrait: the level math and the target frame assume the phone's
+             top edge is "up", which keeps coordinate mapping simple. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            tools:ignore="DiscouragedApi,LockedOrientationActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

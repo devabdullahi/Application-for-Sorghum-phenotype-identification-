@@ -1,0 +1,26 @@
+flowchart TB
+    subgraph APP["Mobile App — Kotlin"]
+        CAMERA["Camera"]
+        DETECTION["Document Detection"]
+        FRAME["Target Frame"]
+        GUIDANCE["Position Guidance"]
+        CAPTURE["Image Capture"]
+
+        CAMERA --> DETECTION
+        FRAME --> DETECTION
+        DETECTION --> GUIDANCE
+        DETECTION --> CAPTURE
+    end
+
+    subgraph BACKEND["Backend — Kotlin"]
+        API["Ktor API"]
+        VALIDATOR["Document Validator"]
+        PROCESSOR["Image Processor"]
+
+        API --> VALIDATOR
+        VALIDATOR --> PROCESSOR
+    end
+
+    CAPTURE --> API
+    PROCESSOR --> API
+    API --> APP
