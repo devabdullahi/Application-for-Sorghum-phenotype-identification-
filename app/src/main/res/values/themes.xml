@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Plain platform theme; all styling is done in Compose. -->
+    <style name="Theme.SorghumCapture" parent="android:Theme.Material.NoActionBar" />
+</resources>

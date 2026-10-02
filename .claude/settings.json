@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'REMINDER: Follow every rule in coding_instructions.md (project root) for this task. Re-read it if unsure.'"
+          }
+        ]
+      }
+    ]
+  }
+}
