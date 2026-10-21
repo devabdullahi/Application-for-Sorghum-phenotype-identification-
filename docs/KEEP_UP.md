@@ -18,10 +18,10 @@ shells. The whole design is in [ARCHITECTURE.md](architecture/ARCHITECTURE.md).
 | Area | State | Branch |
 |---|---|---|
 | Phase 1 capture (Android): live level + green guidance, auto-capture, quality check | Built and working | `main` |
-| Phase 1 logic moved into `shared/` (KMP), images passed as `PixelImage` | Done (migration step 1) | `feature/kmp-shared` |
-| Capture state machine moved from `CaptureViewModel` to `shared/session/CaptureFlow` | Done (step 2) | `feature/kmp-shared` |
-| iOS app uses `Shared.framework` instead of Swift copies | In progress (step 3) | `feature/kmp-shared` |
-| Species model ("is it sorghum?") training code in `model/` | Code written, 47 tests pass; training not run yet | `feature/model-species-head` |
+| Phase 1 logic moved into `shared/` (KMP), images passed as `PixelImage` | Done (migration step 1) | `feature/kmp-shared` (PR #3) |
+| Capture state machine moved from `CaptureViewModel` to `shared/session/CaptureFlow` | Done (step 2) | `feature/kmp-shared` (PR #3) |
+| iOS app uses `Shared.framework` instead of Swift copies; Swift ports deleted | Done (step 3). Still open: R3 benchmark on a real iPhone (live green check under 5 ms/frame) and a real-device check | `feature/kmp-shared` (PR #3) |
+| Species model ("is it sorghum?") training code in `model/` | Code written, 47 tests pass; training not run yet | `feature/model-species-head` (PR #1) |
 | `shared/species`, `ImageModel` port, LiteRT runners | Not started (step 4) | — |
 | Colour card calibration, trait readers, reasoning | Not started (steps 5-7) | — |
 
@@ -38,7 +38,7 @@ is a bug.
 | `app/.../ui/CaptureScreen.kt` | Compose UI: preview, target frame overlay, one instruction | No |
 | `app/.../ui/CaptureViewModel.kt` | Thin adapter: forwards events to `CaptureFlow`, maps `CaptureState` to `CaptureUiState`, keeps the accepted `Bitmap` | No (on purpose) |
 | `app/.../camera/CameraSession.kt` | CameraX binding: preview, analysis (RGBA, 640x480, keep-only-latest), still capture | No |
-| `app/.../camera/SampleCoverageAnalyzer.kt` | Per frame: crop to target, at most 160 px, convert, measure green coverage | Calls shared |
+| `app/.../camera/SampleCoverageAnalyzer.kt` | Per frame: crop to target, at most `LIVE_ANALYSIS_LONG_SIDE_PIXELS` (160, defined in `shared/`), convert, measure green coverage | Calls shared |
 | `app/.../camera/FrameCropper.kt` | Crop `ImageProxy` to the target frame, downscale `Bitmap` | Geometry only |
 | `app/.../camera/PixelImageConversion.kt` | **The one** `Bitmap` (ARGB) to `PixelImage` (RGB) converter, with a 2x2 test | Conversion only |
 | `app/.../camera/TiltSensor.kt` | Gravity sensor (accelerometer fallback) to `DeviceTilt` flow | No |
@@ -84,8 +84,8 @@ Adapters and UI have no unit tests, so check them on a device.
 
 In order. Items marked *ready* can start now.
 
-1. **Review the KMP PR** (`feature/kmp-shared`) on a real device: guidance, auto-capture and
-   rejections must behave exactly as on `main`. *Ready once the PR is open.*
+1. **Review the KMP PR** ([#3](https://github.com/devabdullahi/Application-for-Sorghum-phenotype-identification-/pull/3), `feature/kmp-shared`) on a real device: guidance, auto-capture and
+   rejections must behave exactly as on `main`. *Ready now.*
 2. **Species gate on Android** (step 4; iOS goes first, then Android):
    - An `ImageModel` implementation using LiteRT: load `traits-vN.tflite` from assets once,
      feed the uint8 input, return `Map<HeadId, FloatArray>`. No preprocessing in Kotlin
@@ -144,7 +144,11 @@ Newest first. One line per change that someone on Android should know about.
   `CaptureViewModel` is now a thin adapter (`feature/kmp-shared`).
 - **2026-10-21:** Phase 1 logic moved to `shared/` and images passed as `PixelImage`
   (`feature/kmp-shared`).
-- **2026-10-21:** iOS app adds a `CVPixelBuffer` to `PixelImage` converter and starts linking
-  `Shared.framework` (`feature/kmp-shared`, in progress).
+- **2026-10-21:** iPhone runs the full phase 1 flow from shared `CaptureFlow`: Core Motion
+  level guidance, 800 ms hold, auto-capture, quality check. Swift ports (`GreenCoverage`,
+  `TargetFrame`, `SampleStatus`) deleted. iOS adapters are now `TiltSensor`, the one
+  BGRA to `PixelImage` converter (vImage filtered downscale, rotated upright) and BGRA still
+  capture. `LIVE_ANALYSIS_LONG_SIDE_PIXELS` (160) moved to `shared/`. Still open: R3
+  benchmark and a real-iPhone check (PR #3).
 - **2026-10-19:** Target architecture and ADR-0001 to 0006 written; species gate added
   before cultivar matching (ADR-0006).
