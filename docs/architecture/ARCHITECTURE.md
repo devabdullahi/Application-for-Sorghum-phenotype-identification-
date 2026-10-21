@@ -105,7 +105,7 @@ Rules:
 | `calibration` | Find colour card, fit affine colour correction to known patch values, pixels-per-mm from patch size | New (port PlantCV method) |
 | `traits` | Trait catalogue (descriptor id, states, photo type, method); `TraitEstimate` (distribution over states, or value + uncertainty for continuous traits); measured readers (midrib colour, pigmentation, glume colour, grain colour, lustre, seed size); mapping of `ImageModel` trait heads to `TraitEstimate` | New |
 | `reasoning` | `CultivarTable` (P(state \| cultivar) per trait, with noise floor), priors, naive Bayes posterior, decision (top-k, "unrecognized" when fit is poor), explanation (traits that moved the ranking most) | New |
-| `session` | Use cases and state: start session → pick photo type → live guidance → capture → check → calibrate → read traits → accumulate across photos → reason → correct trait → re-reason | Today in `ui/CaptureViewModel.kt` (Android) and `UI/CaptureModel.swift` (iOS) |
+| `session` | Use cases and state: start session → pick photo type → live guidance → capture → check → calibrate → read traits → accumulate across photos → reason → correct trait → re-reason | Capture flow in `shared/session/CaptureFlow.kt` (step 2); Android `CaptureViewModel` and iOS `CaptureModel` adapt it |
 
 ### 3.3 Boundary contracts
 

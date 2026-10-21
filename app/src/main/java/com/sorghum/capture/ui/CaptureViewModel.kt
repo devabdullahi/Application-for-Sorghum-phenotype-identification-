@@ -10,18 +10,13 @@ import com.sorghum.capture.camera.CameraSession
 import com.sorghum.capture.camera.cropToTargetFrame
 import com.sorghum.capture.camera.scaledToLongSide
 import com.sorghum.capture.camera.toPixelImage
-import com.sorghum.capture.frame.TargetFrame
 import com.sorghum.capture.guidance.DeviceTilt
-import com.sorghum.capture.guidance.GuidanceSettings
 import com.sorghum.capture.guidance.GuidanceState
-import com.sorghum.capture.guidance.SteadyHoldTimer
-import com.sorghum.capture.guidance.evaluateGuidance
 import com.sorghum.capture.quality.QUALITY_CHECK_LONG_SIDE_PIXELS
-import com.sorghum.capture.quality.QualitySettings
 import com.sorghum.capture.quality.RejectionReason
-import com.sorghum.capture.quality.checkPhotoQuality
-import com.sorghum.capture.sample.GreenDetectionSettings
 import com.sorghum.capture.sample.SampleCoverage
+import com.sorghum.session.CaptureFlow
+import com.sorghum.session.CaptureState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,44 +38,45 @@ sealed interface CaptureUiState {
 }
 
 /**
- * Holds the capture flow's state: combines tilt and sample readings into guidance, and runs
- * the post-capture check.
+ * Android adapter for the shared [CaptureFlow]: forwards camera and sensor events to it and
+ * publishes its state for Compose. The capture rules themselves live in `shared/session`.
  *
  * All public functions must be called on the main thread; the camera and sensor callbacks are
- * routed there, so guidance state has a single owner and needs no locking.
+ * routed there, so the flow has a single owner and needs no locking.
  */
 class CaptureViewModel : ViewModel() {
 
-    val targetFrame = TargetFrame()
-    val greenDetectionSettings = GreenDetectionSettings()
-    private val guidanceSettings = GuidanceSettings()
-    private val qualitySettings = QualitySettings(greenDetection = greenDetectionSettings)
-    private val holdTimer = SteadyHoldTimer()
+    private val flow = CaptureFlow()
 
-    private var latestTilt: DeviceTilt? = null
-    private var latestCoverage: SampleCoverage? = null
+    val targetFrame = flow.settings.targetFrame
+    val greenDetectionSettings = flow.settings.greenDetection
+
+    /** The accepted photo, kept here because the shared flow never holds platform images. */
+    private var acceptedPhoto: Bitmap? = null
 
     private val mutableUiState = MutableStateFlow<CaptureUiState>(CaptureUiState.Guiding(guidance = null))
     val uiState: StateFlow<CaptureUiState> = mutableUiState.asStateFlow()
 
     /** @param timestampMillis from SystemClock.elapsedRealtime(). */
     fun onTiltChanged(tilt: DeviceTilt, timestampMillis: Long) {
-        latestTilt = tilt
-        refreshGuidance(timestampMillis)
+        flow.onTiltChanged(tilt, timestampMillis)
+        publishState()
     }
 
     /** @param timestampMillis from SystemClock.elapsedRealtime(). */
     fun onSampleCoverageMeasured(coverage: SampleCoverage, timestampMillis: Long) {
-        latestCoverage = coverage
-        refreshGuidance(timestampMillis)
+        flow.onSampleCoverageMeasured(coverage, timestampMillis)
+        publishState()
     }
 
     fun onCameraUnavailable() {
-        mutableUiState.value = CaptureUiState.CameraUnavailable
+        flow.onCameraUnavailable()
+        publishState()
     }
 
     fun onLevelSensorUnavailable() {
-        mutableUiState.value = CaptureUiState.LevelSensorUnavailable
+        flow.onLevelSensorUnavailable()
+        publishState()
     }
 
     /**
@@ -88,51 +84,54 @@ class CaptureViewModel : ViewModel() {
      * second capture while the first is still being checked.
      */
     fun captureAndCheckPhoto(camera: CameraSession) {
-        if (mutableUiState.value !is CaptureUiState.Guiding) return
-        mutableUiState.value = CaptureUiState.CheckingPhoto
+        if (!flow.startCapture()) return
+        publishState()
 
         viewModelScope.launch {
             val photo = try {
                 camera.takePhoto()
             } catch (exception: ImageCaptureException) {
                 Log.e(TAG, "Photo capture failed (error ${exception.imageCaptureError})", exception)
-                mutableUiState.value = CaptureUiState.CaptureFailed
+                flow.onCaptureFailed()
+                publishState()
                 return@launch
             }
             // Cropping and checking a full-resolution photo takes a moment; keep it off the UI thread.
-            mutableUiState.value = withContext(Dispatchers.Default) { photo.use { checkPhoto(it) } }
+            val (framedPhoto, rejection) = withContext(Dispatchers.Default) { photo.use { checkPhoto(it) } }
+            if (rejection == null) acceptedPhoto = framedPhoto else framedPhoto.recycle()
+            flow.onPhotoChecked(rejection)
+            publishState()
         }
     }
 
     /** Returns to live guidance, starting the steady hold from scratch. */
     fun retake() {
-        holdTimer.reset()
-        latestCoverage = null
-        mutableUiState.value = CaptureUiState.Guiding(guidance = null)
+        acceptedPhoto = null
+        flow.retake()
+        publishState()
     }
 
-    private fun refreshGuidance(timestampMillis: Long) {
-        if (mutableUiState.value !is CaptureUiState.Guiding) return
-        val tilt = latestTilt ?: return
-        val coverage = latestCoverage ?: return
-
-        val evaluated = evaluateGuidance(tilt, coverage, guidanceSettings)
-        mutableUiState.value = CaptureUiState.Guiding(holdTimer.update(evaluated, timestampMillis))
+    private fun publishState() {
+        mutableUiState.value = when (val state = flow.state) {
+            is CaptureState.Guiding -> CaptureUiState.Guiding(state.guidance)
+            CaptureState.CheckingPhoto -> CaptureUiState.CheckingPhoto
+            CaptureState.PhotoAccepted -> CaptureUiState.PhotoAccepted(checkNotNull(acceptedPhoto))
+            is CaptureState.PhotoRejected -> CaptureUiState.PhotoRejected(state.reason)
+            CaptureState.CaptureFailed -> CaptureUiState.CaptureFailed
+            CaptureState.CameraUnavailable -> CaptureUiState.CameraUnavailable
+            CaptureState.LevelSensorUnavailable -> CaptureUiState.LevelSensorUnavailable
+        }
     }
 
-    private fun checkPhoto(image: ImageProxy): CaptureUiState {
+    /** Returns the photo cropped to the target frame, and why it was rejected (null if accepted). */
+    private fun checkPhoto(image: ImageProxy): Pair<Bitmap, RejectionReason?> {
         val framedPhoto = cropToTargetFrame(image, targetFrame, maxLongSidePixels = Int.MAX_VALUE)
 
         // Quality thresholds are defined for a fixed analysis size (see QualitySettings).
         val analysisCopy = framedPhoto.scaledToLongSide(QUALITY_CHECK_LONG_SIDE_PIXELS)
-        val rejection = checkPhotoQuality(analysisCopy.toPixelImage(), qualitySettings)
+        val rejection = flow.checkPhoto(analysisCopy.toPixelImage())
         if (analysisCopy !== framedPhoto) analysisCopy.recycle()
-
-        if (rejection != null) {
-            framedPhoto.recycle()
-            return CaptureUiState.PhotoRejected(rejection)
-        }
-        return CaptureUiState.PhotoAccepted(framedPhoto)
+        return framedPhoto to rejection
     }
 
     private companion object {
