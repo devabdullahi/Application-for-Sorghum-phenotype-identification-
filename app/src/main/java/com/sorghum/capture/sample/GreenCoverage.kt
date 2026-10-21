@@ -9,8 +9,15 @@ import kotlin.math.min
  * @param greenFraction fraction of all pixels in the region that are green.
  * @param edgeGreenFraction fraction of pixels in the region's edge band that are green.
  *   A high value means the sample runs across the region's border, i.e. it is cut off.
+ * @param greenConfidence how clearly green the green pixels are, 0..1: the mean of each green
+ *   pixel's confidence (see [greenConfidenceOf]). Near 0 means the "green" is barely above the
+ *   threshold (dull, yellowing or tinted light); near 1 means clearly green leaf. 0 if no pixel is green.
  */
-data class SampleCoverage(val greenFraction: Float, val edgeGreenFraction: Float)
+data class SampleCoverage(
+    val greenFraction: Float,
+    val edgeGreenFraction: Float,
+    val greenConfidence: Float,
+)
 
 /**
  * Thresholds for deciding whether a pixel is green plant tissue.
@@ -20,13 +27,20 @@ data class SampleCoverage(val greenFraction: Float, val edgeGreenFraction: Float
  * @param minBrightnessSum pixels whose r + g + b is below this are ignored, because in very dark
  *   pixels sensor noise makes the colour ratios meaningless.
  * @param edgeBandFraction width of the edge band, as a fraction of the region's shorter side.
+ * @param fullConfidenceExcessGreen excess-green index at and above which a pixel is certainly
+ *   green (confidence 1). Healthy leaves score about 0.5–0.7; dull or yellowing tissue sits
+ *   near [minExcessGreen]. Initial guess, tune on real photos.
  */
 data class GreenDetectionSettings(
     val minExcessGreen: Float = 0.1f,
     val minBrightnessSum: Int = 60,
     val edgeBandFraction: Float = 0.03f,
+    val fullConfidenceExcessGreen: Float = 0.3f,
 ) {
     init {
+        require(fullConfidenceExcessGreen > minExcessGreen) {
+            "fullConfidenceExcessGreen must be above minExcessGreen ($minExcessGreen), was $fullConfidenceExcessGreen"
+        }
         require(minBrightnessSum in 0..765) {
             "minBrightnessSum must be within 0..765, was $minBrightnessSum"
         }
@@ -60,13 +74,18 @@ fun measureSampleCoverage(
     var greenPixels = 0
     var edgePixels = 0
     var greenEdgePixels = 0
+    var confidenceSum = 0f
     for (y in 0 until height) {
         for (x in 0 until width) {
-            val isGreen = isPlantPixel(argbPixels[y * width + x], settings)
+            val excessGreen = excessGreenIndex(argbPixels[y * width + x], settings)
+            val isGreen = excessGreen != null && excessGreen >= settings.minExcessGreen
             val isInEdgeBand = x < edgeBand || x >= width - edgeBand ||
                 y < edgeBand || y >= height - edgeBand
 
-            if (isGreen) greenPixels++
+            if (isGreen) {
+                greenPixels++
+                confidenceSum += greenConfidenceOf(excessGreen!!, settings)
+            }
             if (isInEdgeBand) {
                 edgePixels++
                 if (isGreen) greenEdgePixels++
@@ -77,6 +96,7 @@ fun measureSampleCoverage(
     return SampleCoverage(
         greenFraction = greenPixels.toFloat() / (width * height),
         edgeGreenFraction = greenEdgePixels.toFloat() / edgePixels,
+        greenConfidence = if (greenPixels == 0) 0f else confidenceSum / greenPixels,
     )
 }
 
@@ -87,12 +107,28 @@ fun measureSampleCoverage(
  * It is a standard, cheap vegetation index in plant phenotyping.
  */
 internal fun isPlantPixel(argb: Int, settings: GreenDetectionSettings): Boolean {
+    val excessGreen = excessGreenIndex(argb, settings) ?: return false
+    return excessGreen >= settings.minExcessGreen
+}
+
+/** The excess-green index of one pixel, or null if it is too dark for colour ratios to mean anything. */
+internal fun excessGreenIndex(argb: Int, settings: GreenDetectionSettings): Float? {
     val red = (argb shr 16) and 0xFF
     val green = (argb shr 8) and 0xFF
     val blue = argb and 0xFF
     val brightnessSum = red + green + blue
-    if (brightnessSum < settings.minBrightnessSum) return false
+    if (brightnessSum < settings.minBrightnessSum) return null
 
-    val excessGreen = (2f * green - red - blue) / brightnessSum
-    return excessGreen >= settings.minExcessGreen
+    return (2f * green - red - blue) / brightnessSum
+}
+
+/**
+ * How sure we are that a pixel with this excess-green index is green plant tissue, 0..1.
+ * Rises linearly from 0 at the classification threshold to 1 at
+ * [GreenDetectionSettings.fullConfidenceExcessGreen], so pixels that only just pass the
+ * threshold count as uncertain rather than as fully green.
+ */
+internal fun greenConfidenceOf(excessGreen: Float, settings: GreenDetectionSettings): Float {
+    val range = settings.fullConfidenceExcessGreen - settings.minExcessGreen
+    return ((excessGreen - settings.minExcessGreen) / range).coerceIn(0f, 1f)
 }

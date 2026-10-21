@@ -15,6 +15,9 @@ class GreenCoverageTest {
     private val brownBoard = argb(120, 90, 60)
     private val darkGreenNoise = argb(5, 20, 5)
 
+    // Excess green (2*120 - 100 - 80) / 300 = 0.2: halfway between the 0.1 threshold and 0.3.
+    private val dullGreen = argb(100, 120, 80)
+
     @Test
     fun `leaf green is classified as plant`() {
         assertTrue(isPlantPixel(leafGreen, settings))
@@ -66,6 +69,50 @@ class GreenCoverageTest {
         val coverage = measureSampleCoverage(IntArray(4) { leafGreen }, 2, 2, settings)
 
         assertEquals(1f, coverage.edgeGreenFraction, tolerance)
+    }
+
+    @Test
+    fun `clearly green leaf has full confidence`() {
+        val coverage = measureSampleCoverage(IntArray(100) { leafGreen }, 10, 10, settings)
+
+        assertEquals(1f, coverage.greenConfidence, tolerance)
+    }
+
+    @Test
+    fun `dull green halfway past the threshold has half confidence`() {
+        val coverage = measureSampleCoverage(IntArray(100) { dullGreen }, 10, 10, settings)
+
+        assertEquals(1f, coverage.greenFraction, tolerance)
+        assertEquals(0.5f, coverage.greenConfidence, tolerance)
+    }
+
+    @Test
+    fun `confidence averages over green pixels only, not the board`() {
+        // Left half clear leaf, right quarter dull green, rest white board.
+        val pixels = image(100, 100) { x, _ ->
+            when {
+                x < 50 -> leafGreen
+                x < 75 -> dullGreen
+                else -> whiteBoard
+            }
+        }
+
+        val coverage = measureSampleCoverage(pixels, 100, 100, settings)
+
+        // (50 * 1.0 + 25 * 0.5) / 75 green columns.
+        assertEquals(0.8333f, coverage.greenConfidence, tolerance)
+    }
+
+    @Test
+    fun `no green pixels means zero confidence`() {
+        val coverage = measureSampleCoverage(IntArray(100) { whiteBoard }, 10, 10, settings)
+
+        assertEquals(0f, coverage.greenConfidence, tolerance)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `full-confidence level must be above the threshold`() {
+        GreenDetectionSettings(minExcessGreen = 0.2f, fullConfidenceExcessGreen = 0.2f)
     }
 
     @Test(expected = IllegalArgumentException::class)
