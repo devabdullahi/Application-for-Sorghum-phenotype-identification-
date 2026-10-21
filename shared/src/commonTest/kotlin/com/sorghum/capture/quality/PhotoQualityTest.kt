@@ -1,9 +1,9 @@
 package com.sorghum.capture.quality
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.test.Test
 
 /**
  * Synthetic photos: a grey board with a green "leaf" whose edges are sharp or smeared.

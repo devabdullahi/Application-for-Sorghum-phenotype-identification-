@@ -11,13 +11,13 @@ The rules below are specific to this repo. They add to coding_instructions.md an
 - Offline mobile app that identifies sorghum cultivars from leaf, panicle and grain photos. It reads visible traits (IBPGR/ICRISAT descriptors) as probabilities over descriptor states, then runs a naive Bayes network (Genesys tables) to return the best matches with reasons, or "unrecognized".
 - Pipeline: capture + guidance, then quality check, then colour correction (colour card, mm scale), then trait reading (measured + learned), then reasoning + result.
 - Target architecture: `docs/architecture/ARCHITECTURE.md`. Decisions: `docs/architecture/adr/`. Phase 1 capture design: `phase1_overview.md`. If this file disagrees with ARCHITECTURE.md, ARCHITECTURE.md wins. Fix this file in the same change.
-- Today only phase 1 exists: the Android app is in `app/` and a temporary Swift port is in `ios/`. Everything else below is the target, and new code must already follow it.
+- Today only phase 1 exists: its logic is in `shared/` (migration step 1), the Android app is in `app/` and a temporary Swift port is in `ios/`. Everything else below is the target, and new code must already follow it.
 
 ## Module map and dependency direction
 
 | Today | Target | Holds |
 |---|---|---|
-| `app/.../frame, guidance, quality, sample` | `shared/src/commonMain/kotlin/com/sorghum/{imaging,capture,segmentation,calibration,traits,reasoning,session}` | All logic |
+| `shared/.../capture/{frame,guidance,quality,sample}` | `shared/src/commonMain/kotlin/com/sorghum/{imaging,capture,segmentation,calibration,traits,reasoning,session}` | All logic |
 | `app/.../ui`, `app/.../camera`, `MainActivity` | `androidApp/ui`, `androidApp/platform` | Compose, CameraX, gravity sensor, LiteRT runner, asset loader |
 | `ios/SorghumCapture` (temporary port, ADR-0005) | `iosApp/UI`, `iosApp/Platform` | SwiftUI, AVFoundation, Core Motion, LiteRT runner, asset loader |
 | (none) | `model/` | Training, INT8 export, Genesys table builder, test fixtures |
@@ -28,7 +28,7 @@ The rules below are specific to this repo. They add to coding_instructions.md an
 - `shared/` imports no `android.*`, `androidx.*`, `platform.*`, CameraX, AVFoundation or LiteRT. Check with `grep -rE "^import (android|androidx|platform\.|org\.tensorflow|com\.google\.ai)" shared/src/commonMain`. Expect no output.
 - Per-platform capabilities are ports (Kotlin interfaces) defined in `shared/` and implemented natively at startup: `ImageModel`, `CultivarTableSource`. Do not use `expect/actual` for domain behaviour.
 - Native code has no thresholds, formulas or decisions. If a line compares a measurement to a number, it belongs in `shared/`. UI renders `SessionState` and forwards events. ViewModels and `CaptureModel` are thin adapters to `session`.
-- Do not add new logic to `ios/SorghumCapture/{Frame,Sample}` or to `app/`'s pure packages without planning its move. New domain code goes in Kotlin. Until `shared/` exists, a Swift copy must be a 1:1 port with mirrored tests.
+- Do not add new logic to `ios/SorghumCapture/{Frame,Sample}`. New domain code goes in Kotlin in `shared/`. Until iOS consumes `shared/` (migration step 3), a Swift copy must be a 1:1 port with mirrored tests.
 - No `utils/`, `common/` or `helpers/` packages. Name packages after the module they belong to.
 
 ## Boundary contracts
@@ -83,11 +83,11 @@ Keep the KMP API plain (ADR-0003): data classes, enums, `ByteArray`, `List` and 
 
 ## Testing and commands
 
-- Domain: every public function has `commonTest` tests (JVM tests in `app/src/test` today) built from hand-made pixel arrays. Test each threshold at, just below and just above its value.
+- Domain: every public function has `commonTest` tests built from hand-made pixel arrays. Test each threshold at, just below and just above its value.
 - Reasoning: use a tiny hand-written table to test the noise floor (no zero posterior), unrecognized, groups, and correction-recompute.
 - Adapters and UI get no unit tests. Keep them thin enough for that, and verify them on a device: `./run.sh [AvdName]` for Android, Xcode run for iOS.
 - Commands (verified 2026-10-19):
-  - Android: `./gradlew test` from the repo root. After the KMP move, also run `./gradlew :shared:allTests`.
+  - Android and shared: `./gradlew test :shared:allTests` from the repo root (`allTests` runs `commonTest` on the JVM and the iOS simulator).
   - iOS: `cd ios && xcodegen generate && xcodebuild test -project SorghumCapture.xcodeproj -scheme SorghumCapture -destination 'platform=iOS Simulator,name=<device>'`. Get `<device>` from `xcrun simctl list devices available`. Run `xcodegen generate` after adding or removing Swift files, and never hand-edit `project.pbxproj`.
 - A change to any logic present on both platforms is done only when both suites pass.
 

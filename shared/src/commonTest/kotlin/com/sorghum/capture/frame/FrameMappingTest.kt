@@ -1,7 +1,8 @@
 package com.sorghum.capture.frame
 
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.Test
+import kotlin.test.assertFailsWith
 
 /**
  * Worked examples use a 400x300 sensor image (landscape) with no extra crop, and a target
@@ -52,9 +53,9 @@ class FrameMappingTest {
         assertEquals(PixelRect(100, 45, 200, 95), result)
     }
 
-    @Test(expected = IllegalArgumentException::class)
+    @Test
     fun `rejects rotations that are not a multiple of 90`() {
-        mapTargetToImagePixels(topLeftQuarter, fullCrop, rotationDegrees = 45)
+        assertFailsWith<IllegalArgumentException> { mapTargetToImagePixels(topLeftQuarter, fullCrop, rotationDegrees = 45) }
     }
 
     @Test

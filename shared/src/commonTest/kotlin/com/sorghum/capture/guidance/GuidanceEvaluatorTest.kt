@@ -1,8 +1,8 @@
 package com.sorghum.capture.guidance
 
 import com.sorghum.capture.sample.SampleCoverage
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.Test
 
 class GuidanceEvaluatorTest {
 

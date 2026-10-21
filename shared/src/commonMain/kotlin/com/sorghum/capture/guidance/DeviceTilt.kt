@@ -1,5 +1,6 @@
 package com.sorghum.capture.guidance
 
+import kotlin.math.PI
 import kotlin.math.atan2
 
 /**
@@ -24,9 +25,12 @@ data class DeviceTilt(val pitchDegrees: Float, val rollDegrees: Float) {
          * never mistaken for level.
          */
         fun fromGravity(x: Float, y: Float, z: Float): DeviceTilt {
-            val pitch = Math.toDegrees(atan2(y, z).toDouble()).toFloat()
-            val roll = Math.toDegrees(atan2(x, z).toDouble()).toFloat()
+            val pitch = (atan2(y, z).toDouble() * RADIANS_TO_DEGREES).toFloat()
+            val roll = (atan2(x, z).toDouble() * RADIANS_TO_DEGREES).toFloat()
             return DeviceTilt(pitchDegrees = pitch, rollDegrees = roll)
         }
+
+        // Same factor java.lang.Math.toDegrees uses, so results match the JVM version exactly.
+        private const val RADIANS_TO_DEGREES = 180.0 / PI
     }
 }

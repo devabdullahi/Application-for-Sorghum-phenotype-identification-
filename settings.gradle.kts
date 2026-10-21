@@ -24,3 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "SorghumCapture"
 include(":app")
+include(":shared")

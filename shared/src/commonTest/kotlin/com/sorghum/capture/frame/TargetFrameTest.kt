@@ -1,7 +1,8 @@
 package com.sorghum.capture.frame
 
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.Test
+import kotlin.test.assertFailsWith
 
 class TargetFrameTest {
 
@@ -29,13 +30,13 @@ class TargetFrameTest {
         assertEquals(0.0f, rect.top, tolerance)
     }
 
-    @Test(expected = IllegalArgumentException::class)
+    @Test
     fun `rejects a width fraction above 1`() {
-        TargetFrame(widthFraction = 1.2f)
+        assertFailsWith<IllegalArgumentException> { TargetFrame(widthFraction = 1.2f) }
     }
 
-    @Test(expected = IllegalArgumentException::class)
+    @Test
     fun `rejects an empty area`() {
-        TargetFrame().normalizedRectIn(0, 100)
+        assertFailsWith<IllegalArgumentException> { TargetFrame().normalizedRectIn(0, 100) }
     }
 }

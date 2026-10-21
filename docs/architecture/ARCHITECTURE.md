@@ -232,7 +232,7 @@ sequenceDiagram
 
 ## 8. Migration from today
 
-Today: Android app in `app/` with pure logic in `frame/ guidance/ quality/ sample/`; a Swift port of the green check in `ios/`.
+Today: pure logic (`frame/ guidance/ quality/ sample/`) in `shared/` (step 1), consumed by the Android app in `app/`; a Swift port of the green check in `ios/`.
 
 1. **Create `shared/`** and move the pure packages unchanged (`frame`, `guidance`, `quality`, `sample`), replacing `Bitmap`/`Float` platform touch points with `PixelImage`. Move their JVM tests to `commonTest`. Android app depends on `shared/`; behaviour unchanged.
 2. **Move session logic** out of `CaptureViewModel` into `shared/session`; Android ViewModel becomes a thin adapter.

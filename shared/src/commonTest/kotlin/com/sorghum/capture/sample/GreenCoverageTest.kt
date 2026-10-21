@@ -1,9 +1,10 @@
 package com.sorghum.capture.sample
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import kotlin.test.Test
+import kotlin.test.assertFailsWith
 
 class GreenCoverageTest {
 
@@ -87,7 +88,7 @@ class GreenCoverageTest {
     }
 
     @Test
-    fun `confidence averages over green pixels only, not the board`() {
+    fun `confidence averages over green pixels only and not the board`() {
         // Left half clear leaf, right quarter dull green, rest white board.
         val pixels = image(100, 100) { x, _ ->
             when {
@@ -110,14 +111,14 @@ class GreenCoverageTest {
         assertEquals(0f, coverage.greenConfidence, tolerance)
     }
 
-    @Test(expected = IllegalArgumentException::class)
+    @Test
     fun `full-confidence level must be above the threshold`() {
-        GreenDetectionSettings(minExcessGreen = 0.2f, fullConfidenceExcessGreen = 0.2f)
+        assertFailsWith<IllegalArgumentException> { GreenDetectionSettings(minExcessGreen = 0.2f, fullConfidenceExcessGreen = 0.2f) }
     }
 
-    @Test(expected = IllegalArgumentException::class)
+    @Test
     fun `rejects pixel arrays that do not match the size`() {
-        measureSampleCoverage(IntArray(10), 4, 4, settings)
+        assertFailsWith<IllegalArgumentException> { measureSampleCoverage(IntArray(10), 4, 4, settings) }
     }
 
     private fun image(width: Int, height: Int, pixelAt: (x: Int, y: Int) -> Int): IntArray =

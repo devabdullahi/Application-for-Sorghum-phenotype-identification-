@@ -1,9 +1,12 @@
 package com.sorghum.capture.guidance
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlin.test.Test
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 
 class DeviceTiltTest {
 
@@ -21,8 +24,8 @@ class DeviceTiltTest {
     @Test
     fun `raising the top edge gives positive pitch`() {
         // Top edge raised 10°: part of gravity now reads along +y.
-        val radians = Math.toRadians(10.0)
-        val tilt = DeviceTilt.fromGravity(0f, (gravity * Math.sin(radians)).toFloat(), (gravity * Math.cos(radians)).toFloat())
+        val radians = 10.0 * PI / 180
+        val tilt = DeviceTilt.fromGravity(0f, (gravity * sin(radians)).toFloat(), (gravity * cos(radians)).toFloat())
 
         assertEquals(10f, tilt.pitchDegrees, tolerance)
         assertEquals(0f, tilt.rollDegrees, tolerance)
@@ -30,8 +33,8 @@ class DeviceTiltTest {
 
     @Test
     fun `raising the right edge gives positive roll`() {
-        val radians = Math.toRadians(8.0)
-        val tilt = DeviceTilt.fromGravity((gravity * Math.sin(radians)).toFloat(), 0f, (gravity * Math.cos(radians)).toFloat())
+        val radians = 8.0 * PI / 180
+        val tilt = DeviceTilt.fromGravity((gravity * sin(radians)).toFloat(), 0f, (gravity * cos(radians)).toFloat())
 
         assertEquals(8f, tilt.rollDegrees, tolerance)
     }
