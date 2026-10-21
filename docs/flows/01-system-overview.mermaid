@@ -1,0 +1,34 @@
+%% Status: target design (ARCHITECTURE.md section 3). Today only capture, imaging and session exist in shared/.
+%% Arrows are compile-time dependencies. Dotted arrows: native code implements a port defined in shared/.
+flowchart TB
+    subgraph Android["app/ (Android, Kotlin)"]
+        UI["ui/<br/>CaptureScreen (Compose)<br/>CaptureViewModel"]
+        CAM["camera/<br/>CameraSession (CameraX)<br/>SampleCoverageAnalyzer, FrameCropper"]
+        TILT["camera/TiltSensor<br/>gravity sensor"]
+        CONV["camera/PixelImageConversion<br/>Bitmap ARGB to PixelImage"]
+        RUN["LiteRT runner<br/>(not built yet)"]
+    end
+
+    subgraph Shared["shared/ (Kotlin Multiplatform, no OS APIs)"]
+        SES["session<br/>CaptureFlow"]
+        CAP["capture<br/>frame, guidance, quality, sample"]
+        SP["species<br/>(not built yet)"]
+        TR["traits / calibration / reasoning<br/>(not built yet)"]
+        IMG["imaging<br/>PixelImage"]
+    end
+
+    subgraph Model["model/ (Python, workstation only)"]
+        TRAIN["MobileNetV3-Small training<br/>INT8 export"]
+    end
+
+    UI --> SES
+    CAM --> CONV --> SES
+    TILT -- "DeviceTilt" --> SES
+    SES --> CAP
+    SES --> SP
+    SES --> TR
+    CAP --> IMG
+    SP --> IMG
+    RUN -. "implements ImageModel" .-> SP
+    TRAIN -- "traits-vN.tflite + .json (bundled asset)" --> RUN
+    TRAIN -- "parity fixtures" --> Shared

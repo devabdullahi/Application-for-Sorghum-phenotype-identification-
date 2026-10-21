@@ -1,0 +1,25 @@
+%% Status: target (migration step 4, ADR-0006). model/ side is written; shared/species and the
+%% Android LiteRT runner are not built yet. iOS is integrated first, Android next.
+sequenceDiagram
+    participant F as shared session
+    participant P as shared preprocessing
+    participant M as ImageModel port
+    participant R as Android LiteRT runner<br/>(androidApp/platform)
+    participant SP as shared species
+
+    Note over F: after the quality check accepts the photo
+    F->>P: accepted PixelImage
+    P->>P: centre square crop, bilinear resize to 224 px<br/>quantize: q = v / scale + zeroPoint (from traits-vN.json)
+    P->>M: run(PixelImage 224x224)
+    M->>R: implemented natively
+    R->>R: load traits-vN.tflite once<br/>set uint8 input, invoke
+    R-->>M: Map("species" -> FloatArray logits)
+    M-->>SP: logits
+    SP->>SP: softmax(logits / temperature)
+    alt P(sorghum) >= sorghumThreshold
+        SP-->>F: continue to calibration and traits
+    else top class is a named look-alike and confident
+        SP-->>F: NotSorghum(name, e.g. "maize", "Johnson grass")
+    else below threshold
+        SP-->>F: Unsure: retake or try another photo type
+    end
