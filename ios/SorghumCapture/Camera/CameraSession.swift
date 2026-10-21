@@ -7,8 +7,13 @@ enum CameraStartError: Error {
     case cameraUnavailable
 }
 
-/// Runs the back camera and measures how much green sample is inside the target frame of each
-/// live video frame.
+enum PhotoCaptureError: Error {
+    /// The photo output reported an error or returned no pixels.
+    case captureFailed(underlying: Error?)
+}
+
+/// Runs the back camera, measures how much green sample is inside the target frame of each
+/// live video frame, and takes still photos.
 ///
 /// Frames are analysed on `analysisQueue`; results are delivered to `onCoverageMeasured` on the
 /// main thread so all UI state is only touched from one thread.
@@ -27,6 +32,9 @@ final class CameraSession: NSObject, @unchecked Sendable {
     /// Pure shared function, safe to call on `analysisQueue`.
     private let measureLiveFrame: @Sendable (PixelImage) -> SampleCoverage
     private let videoOutput = AVCaptureVideoDataOutput()
+    private let photoOutput = AVCapturePhotoOutput()
+    /// Keeps each in-flight photo's delegate alive; AVFoundation holds it only weakly.
+    private var photoDelegates: [Int64: PhotoCaptureDelegate] = [:]
     private let sessionQueue = DispatchQueue(label: "com.sorghum.capture.session")
     private let analysisQueue = DispatchQueue(label: "com.sorghum.capture.analysis")
     /// Set on `sessionQueue` during configuration, before `start()` returns.
@@ -44,6 +52,34 @@ final class CameraSession: NSObject, @unchecked Sendable {
 
     func updateAnalysisRegion(_ region: CGRect) {
         analysisRegion.withLock { $0 = region }
+    }
+
+    /// The target frame in camera-buffer fractions, the same region the live check analyses.
+    /// Photos are cropped to it so the final check looks at exactly what the guidance saw.
+    var currentAnalysisRegion: CGRect? {
+        analysisRegion.withLock { $0 }
+    }
+
+    /// Takes an uncompressed BGRA photo in sensor orientation, like the live frames, so the same
+    /// converter can crop and turn it upright.
+    func takePhoto() async throws -> CVPixelBuffer {
+        try await withCheckedThrowingContinuation { continuation in
+            sessionQueue.async {
+                guard self.photoOutput.availablePhotoPixelFormatTypes.contains(kCVPixelFormatType_32BGRA) else {
+                    continuation.resume(throwing: PhotoCaptureError.captureFailed(underlying: nil))
+                    return
+                }
+                let settings = AVCapturePhotoSettings(format: [
+                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                ])
+                let delegate = PhotoCaptureDelegate { [weak self] result in
+                    self?.sessionQueue.async { self?.photoDelegates[settings.uniqueID] = nil }
+                    continuation.resume(with: result)
+                }
+                self.photoDelegates[settings.uniqueID] = delegate
+                self.photoOutput.capturePhoto(with: settings, delegate: delegate)
+            }
+        }
     }
 
     /// Asks for camera permission if needed, then configures and starts the session.
@@ -103,7 +139,8 @@ final class CameraSession: NSObject, @unchecked Sendable {
         guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
               let input = try? AVCaptureDeviceInput(device: camera),
               captureSession.canAddInput(input),
-              captureSession.canAddOutput(videoOutput)
+              captureSession.canAddOutput(videoOutput),
+              captureSession.canAddOutput(photoOutput)
         else {
             throw CameraStartError.cameraUnavailable
         }
@@ -119,6 +156,7 @@ final class CameraSession: NSObject, @unchecked Sendable {
         videoOutput.alwaysDiscardsLateVideoFrames = true
         videoOutput.setSampleBufferDelegate(self, queue: analysisQueue)
         captureSession.addOutput(videoOutput)
+        captureSession.addOutput(photoOutput)
         captureSession.commitConfiguration()
     }
 }
@@ -138,5 +176,22 @@ extension CameraSession: AVCaptureVideoDataOutputSampleBufferDelegate {
 
         let coverage = measureLiveFrame(frame)
         DispatchQueue.main.async { self.onCoverageMeasured?(coverage) }
+    }
+}
+
+/// Receives one photo and hands its pixel buffer (or the failure) to `completion`, once.
+private final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
+    private let completion: (Result<CVPixelBuffer, Error>) -> Void
+
+    init(completion: @escaping (Result<CVPixelBuffer, Error>) -> Void) {
+        self.completion = completion
+    }
+
+    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        if let pixelBuffer = photo.pixelBuffer, error == nil {
+            completion(.success(pixelBuffer))
+        } else {
+            completion(.failure(PhotoCaptureError.captureFailed(underlying: error)))
+        }
     }
 }

@@ -19,7 +19,7 @@ The rules below are specific to this repo. They add to coding_instructions.md an
 |---|---|---|
 | `shared/.../capture/{frame,guidance,quality,sample}` | `shared/src/commonMain/kotlin/com/sorghum/{imaging,capture,segmentation,calibration,traits,reasoning,session}` | All logic |
 | `app/.../ui`, `app/.../camera`, `MainActivity` | `androidApp/ui`, `androidApp/platform` | Compose, CameraX, gravity sensor, LiteRT runner, asset loader |
-| `ios/SorghumCapture` (links `Shared.framework`; Swift port left: `SampleStatus`) | `iosApp/UI`, `iosApp/Platform` | SwiftUI, AVFoundation, Core Motion, LiteRT runner, asset loader |
+| `ios/SorghumCapture` (links `Shared.framework`; Swift port removed) | `iosApp/UI`, `iosApp/Platform` | SwiftUI, AVFoundation, Core Motion, LiteRT runner, asset loader |
 | (none) | `model/` | Training, INT8 export, Genesys table builder, test fixtures |
 
 - Allowed: presentation -> `session` only. Platform adapters -> `session` + boundary types. `session` -> domain modules. Domain -> `imaging`. `imaging` -> Kotlin stdlib only.
