@@ -20,8 +20,8 @@ struct CaptureScreen: View {
                 livePreview(guidance: guidance, coverage: coverage)
             case .checkingPhoto:
                 livePreview(guidance: nil, coverage: nil, overrideMessage: "Checking photo…")
-            case let .photoAccepted(photo):
-                acceptedView(photo)
+            case let .photoAccepted(photo, species):
+                acceptedView(photo, species: species)
             case let .photoRejected(reason):
                 messageWithButton(rejectionMessage(reason), buttonLabel: "Try again")
             case .captureFailed:
@@ -71,19 +71,59 @@ struct CaptureScreen: View {
         .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private func acceptedView(_ photo: UIImage) -> some View {
-        VStack(spacing: 16) {
-            Text("Photo accepted")
+    private func acceptedView(_ photo: UIImage, species: SpeciesCheck) -> some View {
+        let verdict = speciesVerdict(species)
+        return VStack(spacing: 16) {
+            Text(verdict.title)
                 .font(.headline)
+                .foregroundStyle(verdict.color)
+            Text(verdict.detail)
+                .font(.subheadline)
                 .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
             Image(uiImage: photo)
                 .resizable()
                 .scaledToFit()
-                .accessibilityLabel("Photo accepted")
+                .accessibilityLabel(verdict.title)
             Button("Retake") { model.retake() }
                 .buttonStyle(.borderedProminent)
         }
         .padding()
+    }
+
+    /// How the species result reads on screen. Only wording: the decision itself was made in
+    /// the shared core.
+    private func speciesVerdict(_ species: SpeciesCheck) -> (title: String, detail: String, color: Color) {
+        switch species {
+        case let sorghum as SpeciesCheckSorghum:
+            return ("Sorghum", "Photo accepted. Sorghum, \(percent(sorghum.sorghumProbability)) sure.", .green)
+        case let notSorghum as SpeciesCheckNotSorghum:
+            let detail = notSorghum.lookAlikeClassId.map { "This looks like \(lookAlikeName($0)), not sorghum." }
+                ?? "This does not look like sorghum."
+            return ("Not sorghum", detail, .orange)
+        case is SpeciesCheckNoPlant:
+            return ("No plant found", "Place the sample on the board inside the frame and retake.", .orange)
+        case is SpeciesCheckUnsure:
+            return ("Not sure it is sorghum", "Retake closer, in good light, or photograph another part of the plant.", .yellow)
+        default:
+            return ("Photo accepted", "Species check not installed yet: this photo was only checked for quality.", .white)
+        }
+    }
+
+    private func percent(_ probability: Float) -> String {
+        probability.formatted(.percent.precision(.fractionLength(0)))
+    }
+
+    /// Display names for the model's look-alike class ids (`model/sorghum_model/species_classes.py`).
+    private func lookAlikeName(_ classId: String) -> String {
+        switch classId {
+        case "johnson_grass": "Johnson grass"
+        case "maize": "maize"
+        case "sugarcane": "sugarcane"
+        case "pearl_millet": "pearl millet"
+        case "finger_millet": "finger millet"
+        default: classId.replacingOccurrences(of: "_", with: " ")
+        }
     }
 
     private var wholePercent: FloatingPointFormatStyle<Float>.Percent {

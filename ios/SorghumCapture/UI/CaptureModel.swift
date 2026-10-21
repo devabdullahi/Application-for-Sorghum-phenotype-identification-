@@ -12,7 +12,8 @@ enum CaptureScreenState {
     /// `coverage` is the latest live measurement, shown as a readout.
     case guiding(guidance: GuidanceState?, coverage: SampleCoverage?)
     case checkingPhoto
-    case photoAccepted(UIImage)
+    /// Passed the quality check; `species` says whether it shows sorghum, or that no model is installed.
+    case photoAccepted(UIImage, species: SpeciesCheck)
     case photoRejected(RejectionReason)
     case captureFailed
 }
@@ -28,6 +29,8 @@ final class CaptureModel {
     let camera: CameraSession
     let targetFrame: TargetFrame
     /// The shared capture rules. Its settings are the single source of every threshold.
+    /// No species model is bundled yet, so the flow reports the species check as unavailable
+    /// and the screen says so; the LiteRT runner arrives with the first trained model.
     private let flow = CaptureFlow()
     private let tiltSensor = TiltSensor()
     private var latestCoverage: SampleCoverage?
@@ -124,18 +127,19 @@ final class CaptureModel {
             if let rejection = flow.checkPhoto(image: analysisCopy) {
                 return .rejected(rejection)
             }
+            let species = flow.checkSpecies(image: analysisCopy)
             guard let displayImage = uprightImage(of: photo, in: region) else { return .unreadable }
-            return .accepted(displayImage)
+            return .accepted(displayImage, species)
         }.value
 
         switch outcome {
         case .unreadable:
             flow.onCaptureFailed()
         case let .rejected(reason):
-            flow.onPhotoChecked(rejection: reason)
-        case let .accepted(displayImage):
+            flow.onPhotoChecked(rejection: reason, species: SpeciesCheckUnavailable.shared)
+        case let .accepted(displayImage, species):
             acceptedPhoto = displayImage
-            flow.onPhotoChecked(rejection: nil)
+            flow.onPhotoChecked(rejection: nil, species: species)
         }
         publishState()
     }
@@ -150,9 +154,9 @@ final class CaptureModel {
             state = .guiding(guidance: guiding.guidance, coverage: latestCoverage)
         case is CaptureStateCheckingPhoto:
             state = .checkingPhoto
-        case is CaptureStatePhotoAccepted:
+        case let accepted as CaptureStatePhotoAccepted:
             // acceptedPhoto is always set before the flow is told the photo passed.
-            state = acceptedPhoto.map { .photoAccepted($0) } ?? .captureFailed
+            state = acceptedPhoto.map { .photoAccepted($0, species: accepted.species) } ?? .captureFailed
         case let rejected as CaptureStatePhotoRejected:
             state = .photoRejected(rejected.reason)
         case is CaptureStateCameraUnavailable:
@@ -170,7 +174,7 @@ final class CaptureModel {
 private enum PhotoCheckOutcome: @unchecked Sendable {
     case unreadable
     case rejected(RejectionReason)
-    case accepted(UIImage)
+    case accepted(UIImage, SpeciesCheck)
 }
 
 /// The photo cropped to the target frame and turned upright, for showing to the user.

@@ -13,6 +13,8 @@ import com.sorghum.capture.sample.GreenDetectionSettings
 import com.sorghum.capture.sample.SampleCoverage
 import com.sorghum.capture.sample.measureSampleCoverage
 import com.sorghum.imaging.PixelImage
+import com.sorghum.species.SpeciesCheck
+import com.sorghum.species.SpeciesGate
 
 /** Everything the capture screen can show. Exactly one is active at a time. */
 sealed interface CaptureState {
@@ -21,8 +23,11 @@ sealed interface CaptureState {
 
     data object CheckingPhoto : CaptureState
 
-    /** The photo passed the check. The photo itself stays with the platform, which displays it. */
-    data object PhotoAccepted : CaptureState
+    /**
+     * The photo passed the quality check. [species] says whether it shows sorghum (or that no
+     * species model is installed). The photo itself stays with the platform, which displays it.
+     */
+    data class PhotoAccepted(val species: SpeciesCheck) : CaptureState
 
     data class PhotoRejected(val reason: RejectionReason) : CaptureState
     data object CaptureFailed : CaptureState
@@ -57,10 +62,16 @@ data class CaptureSettings(
  * The platform owns the camera and the photo pixels; this class only sees [PixelImage]s and
  * the measurements made from them.
  */
-class CaptureFlow(val settings: CaptureSettings) {
+class CaptureFlow(val settings: CaptureSettings, private val speciesGate: SpeciesGate?) {
 
-    /** Uses the default settings. Swift cannot use Kotlin default arguments, hence this overload. */
-    constructor() : this(CaptureSettings())
+    /** Default settings, no species model. Swift cannot use Kotlin default arguments, hence the overloads. */
+    constructor() : this(CaptureSettings(), speciesGate = null)
+
+    /** Default settings with the species check from a loaded model. */
+    constructor(speciesGate: SpeciesGate) : this(CaptureSettings(), speciesGate)
+
+    /** True if photos are checked for sorghum; false means the UI must say the check is missing. */
+    val isSpeciesCheckAvailable: Boolean get() = speciesGate != null
 
     private val holdTimer = SteadyHoldTimer(settings.holdDurationMillis)
     private var latestTilt: DeviceTilt? = null
@@ -103,9 +114,19 @@ class CaptureFlow(val settings: CaptureSettings) {
      */
     fun checkPhoto(image: PixelImage): RejectionReason? = checkPhotoQuality(image, settings.quality)
 
-    /** Records the result of [checkPhoto]. */
-    fun onPhotoChecked(rejection: RejectionReason?) {
-        state = if (rejection == null) CaptureState.PhotoAccepted else CaptureState.PhotoRejected(rejection)
+    /**
+     * Checks whether a photo that passed [checkPhoto] shows sorghum (ADR-0006). Pass the photo
+     * cropped to the target frame at the quality-check size; the gate makes the model input.
+     * Call off the main thread, after [checkPhoto] accepted the photo.
+     */
+    fun checkSpecies(image: PixelImage): SpeciesCheck = speciesGate?.check(image) ?: SpeciesCheck.Unavailable
+
+    /**
+     * Records the result of [checkPhoto] and, for an accepted photo, of [checkSpecies].
+     * [species] is ignored for a rejected photo.
+     */
+    fun onPhotoChecked(rejection: RejectionReason?, species: SpeciesCheck = SpeciesCheck.Unavailable) {
+        state = if (rejection == null) CaptureState.PhotoAccepted(species) else CaptureState.PhotoRejected(rejection)
     }
 
     fun onCaptureFailed() {

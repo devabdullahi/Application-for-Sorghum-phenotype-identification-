@@ -3,6 +3,7 @@
 // Kotlin standard library, so the same code compiles for the JVM and for iOS.
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 kotlin {
@@ -22,6 +23,10 @@ kotlin {
     }
 
     sourceSets {
+        // Parses the bundled model metadata (traits-vN.json). Pure Kotlin, no I/O or network.
+        commonMain.dependencies {
+            implementation(libs.kotlinx.serialization.json)
+        }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }

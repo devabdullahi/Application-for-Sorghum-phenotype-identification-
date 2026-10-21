@@ -4,6 +4,9 @@ import com.sorghum.capture.guidance.DeviceTilt
 import com.sorghum.capture.guidance.GuidanceState
 import com.sorghum.capture.quality.RejectionReason
 import com.sorghum.capture.sample.SampleCoverage
+import com.sorghum.imaging.Rgb
+import com.sorghum.imaging.uniformImage
+import com.sorghum.species.SpeciesCheck
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -76,7 +79,7 @@ class CaptureFlowTest {
 
         flow.startCapture()
         flow.onPhotoChecked(rejection = null)
-        assertEquals(CaptureState.PhotoAccepted, flow.state)
+        assertEquals(CaptureState.PhotoAccepted(SpeciesCheck.Unavailable), flow.state)
 
         flow.retake()
         flow.startCapture()
@@ -105,5 +108,23 @@ class CaptureFlowTest {
         val settings = CaptureSettings()
 
         assertEquals(settings.greenDetection, settings.quality.greenDetection)
+    }
+
+    @Test
+    fun `without a model the species check is unavailable`() {
+        val flow = CaptureFlow()
+
+        assertFalse(flow.isSpeciesCheckAvailable)
+        assertEquals(SpeciesCheck.Unavailable, flow.checkSpecies(uniformImage(4, 4, Rgb(60, 140, 50))))
+    }
+
+    @Test
+    fun `accepted photo carries the species result`() {
+        val flow = CaptureFlow()
+        flow.startCapture()
+
+        flow.onPhotoChecked(rejection = null, species = SpeciesCheck.NotSorghum(lookAlikeClassId = "maize", sorghumProbability = 0.1f))
+
+        assertEquals(CaptureState.PhotoAccepted(SpeciesCheck.NotSorghum("maize", 0.1f)), flow.state)
     }
 }
