@@ -2,6 +2,7 @@ package com.sorghum.capture.quality
 
 import com.sorghum.capture.sample.GreenDetectionSettings
 import com.sorghum.capture.sample.measureSampleCoverage
+import com.sorghum.imaging.PixelImage
 
 /** Why a captured photo was rejected. Each reason maps to a specific message for the user. */
 enum class RejectionReason {
@@ -39,39 +40,30 @@ data class QualitySettings(
 const val QUALITY_CHECK_LONG_SIDE_PIXELS = 640
 
 /**
- * Checks a cropped photo (packed ARGB pixels, row by row) and returns why it should be
- * rejected, or null if it is acceptable.
+ * Checks a cropped, upright photo and returns why it should be rejected, or null if it is
+ * acceptable.
  *
  * Checks run cheapest and most fundamental first: there is no point reporting blur on a
  * photo that has no sample in it.
  */
-fun checkPhotoQuality(
-    argbPixels: IntArray,
-    width: Int,
-    height: Int,
-    settings: QualitySettings,
-): RejectionReason? {
-    val coverage = measureSampleCoverage(argbPixels, width, height, settings.greenDetection)
+fun checkPhotoQuality(image: PixelImage, settings: QualitySettings): RejectionReason? {
+    val coverage = measureSampleCoverage(image, settings.greenDetection)
     if (coverage.greenFraction < settings.minSampleFraction) return RejectionReason.NO_SAMPLE
 
-    val luma = toLuma(argbPixels)
+    val luma = toLuma(image)
     if (luma.average() < settings.minMeanBrightness) return RejectionReason.TOO_DARK
 
     val glarePixels = luma.count { it >= settings.glareBrightness }
     if (glarePixels.toFloat() / luma.size > settings.maxGlareFraction) return RejectionReason.GLARE
 
-    if (laplacianVariance(luma, width, height) < settings.minSharpness) return RejectionReason.BLURRY
+    if (laplacianVariance(luma, image.width, image.height) < settings.minSharpness) return RejectionReason.BLURRY
 
     return null
 }
 
-/** Converts ARGB pixels to luma (perceived brightness, 0–255) using the BT.601 weights. */
-internal fun toLuma(argbPixels: IntArray): IntArray = IntArray(argbPixels.size) { index ->
-    val argb = argbPixels[index]
-    val red = (argb shr 16) and 0xFF
-    val green = (argb shr 8) and 0xFF
-    val blue = argb and 0xFF
-    (0.299f * red + 0.587f * green + 0.114f * blue).toInt()
+/** Converts an image to luma (perceived brightness, 0–255) using the BT.601 weights. */
+internal fun toLuma(image: PixelImage): IntArray = IntArray(image.pixelCount) { index ->
+    (0.299f * image.redAt(index) + 0.587f * image.greenAt(index) + 0.114f * image.blueAt(index)).toInt()
 }
 
 /**

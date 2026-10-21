@@ -1,5 +1,6 @@
 package com.sorghum.capture.sample
 
+import com.sorghum.imaging.PixelImage
 import kotlin.math.max
 import kotlin.math.min
 
@@ -51,22 +52,14 @@ data class GreenDetectionSettings(
 }
 
 /**
- * Measures green coverage of an image region given as packed ARGB pixels
- * (the format returned by android.graphics.Bitmap.getPixels), row by row.
+ * Measures green coverage of an image region.
  *
  * Used both on small live analysis frames and on the captured photo, so the live guidance
  * and the final check agree on what counts as "sample present".
  */
-fun measureSampleCoverage(
-    argbPixels: IntArray,
-    width: Int,
-    height: Int,
-    settings: GreenDetectionSettings,
-): SampleCoverage {
-    require(width > 0 && height > 0) { "Region must have positive size, was ${width}x$height" }
-    require(argbPixels.size == width * height) {
-        "Expected ${width * height} pixels for ${width}x$height, got ${argbPixels.size}"
-    }
+fun measureSampleCoverage(image: PixelImage, settings: GreenDetectionSettings): SampleCoverage {
+    val width = image.width
+    val height = image.height
 
     // Always at least one pixel wide, so tiny analysis frames still have an edge band.
     val edgeBand = max(1, (min(width, height) * settings.edgeBandFraction).toInt())
@@ -77,7 +70,10 @@ fun measureSampleCoverage(
     var confidenceSum = 0f
     for (y in 0 until height) {
         for (x in 0 until width) {
-            val excessGreen = excessGreenIndex(argbPixels[y * width + x], settings)
+            val pixelIndex = y * width + x
+            val excessGreen = excessGreenIndex(
+                image.redAt(pixelIndex), image.greenAt(pixelIndex), image.blueAt(pixelIndex), settings,
+            )
             val isGreen = excessGreen != null && excessGreen >= settings.minExcessGreen
             val isInEdgeBand = x < edgeBand || x >= width - edgeBand ||
                 y < edgeBand || y >= height - edgeBand
@@ -106,16 +102,13 @@ fun measureSampleCoverage(
  * depend on colour rather than lighting, so shaded and sunlit parts of a leaf score alike.
  * It is a standard, cheap vegetation index in plant phenotyping.
  */
-internal fun isPlantPixel(argb: Int, settings: GreenDetectionSettings): Boolean {
-    val excessGreen = excessGreenIndex(argb, settings) ?: return false
+internal fun isPlantPixel(red: Int, green: Int, blue: Int, settings: GreenDetectionSettings): Boolean {
+    val excessGreen = excessGreenIndex(red, green, blue, settings) ?: return false
     return excessGreen >= settings.minExcessGreen
 }
 
 /** The excess-green index of one pixel, or null if it is too dark for colour ratios to mean anything. */
-internal fun excessGreenIndex(argb: Int, settings: GreenDetectionSettings): Float? {
-    val red = (argb shr 16) and 0xFF
-    val green = (argb shr 8) and 0xFF
-    val blue = argb and 0xFF
+internal fun excessGreenIndex(red: Int, green: Int, blue: Int, settings: GreenDetectionSettings): Float? {
     val brightnessSum = red + green + blue
     if (brightnessSum < settings.minBrightnessSum) return null
 

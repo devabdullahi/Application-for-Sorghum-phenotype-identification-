@@ -55,13 +55,6 @@ fun Bitmap.scaledToLongSide(maxLongSidePixels: Int): Bitmap {
     return scale((width * scale).roundToInt(), (height * scale).roundToInt())
 }
 
-/** All pixels as packed ARGB ints, row by row, the format the analysis functions expect. */
-fun Bitmap.argbPixels(): IntArray {
-    val pixels = IntArray(width * height)
-    getPixels(pixels, 0, width, 0, 0, width, height)
-    return pixels
-}
-
 private fun Rect.toPixelRect() = PixelRect(left, top, right, bottom)
 
 /**

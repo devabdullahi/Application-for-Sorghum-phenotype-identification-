@@ -27,8 +27,7 @@ class SampleCoverageAnalyzer(
         // Closing the image is what tells CameraX we are ready for the next frame.
         val coverage = image.use {
             val frameRegion = cropToTargetFrame(it, targetFrame, LIVE_ANALYSIS_LONG_SIDE_PIXELS)
-            val pixels = frameRegion.argbPixels()
-            val result = measureSampleCoverage(pixels, frameRegion.width, frameRegion.height, settings)
+            val result = measureSampleCoverage(frameRegion.toPixelImage(), settings)
             frameRegion.recycle()
             result
         }

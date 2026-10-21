@@ -7,9 +7,9 @@ import androidx.camera.core.ImageProxy
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sorghum.capture.camera.CameraSession
-import com.sorghum.capture.camera.argbPixels
 import com.sorghum.capture.camera.cropToTargetFrame
 import com.sorghum.capture.camera.scaledToLongSide
+import com.sorghum.capture.camera.toPixelImage
 import com.sorghum.capture.frame.TargetFrame
 import com.sorghum.capture.guidance.DeviceTilt
 import com.sorghum.capture.guidance.GuidanceSettings
@@ -125,9 +125,7 @@ class CaptureViewModel : ViewModel() {
 
         // Quality thresholds are defined for a fixed analysis size (see QualitySettings).
         val analysisCopy = framedPhoto.scaledToLongSide(QUALITY_CHECK_LONG_SIDE_PIXELS)
-        val rejection = checkPhotoQuality(
-            analysisCopy.argbPixels(), analysisCopy.width, analysisCopy.height, qualitySettings,
-        )
+        val rejection = checkPhotoQuality(analysisCopy.toPixelImage(), qualitySettings)
         if (analysisCopy !== framedPhoto) analysisCopy.recycle()
 
         if (rejection != null) {
