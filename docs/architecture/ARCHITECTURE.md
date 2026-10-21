@@ -116,7 +116,7 @@ These cross the KMP ↔ native boundary or the model boundary. Keep them plain d
 | `PixelImage` | width, height, row-major RGB bytes, upright | Native adapters convert from `CVPixelBuffer` / `ImageProxy`. One copy per frame; live frames are ≤160 px long side, photos are downscaled per use (640 px quality check, full res crops for awns). |
 | Target region | `NormalizedRect` in upright-image fractions | Shared computes it; native maps preview ↔ image (AVFoundation `metadataOutputRect…`, CameraX viewport). |
 | `DeviceTilt` | pitch°, roll°; 0/0 = flat, screen up | Same convention as phase 1. |
-| `ImageModel` | `PixelImage` (cropped, at model input size) → `Map<HeadId, FloatArray>` logits for every head (species now, traits later) | Preprocessing spec (size, normalization, colour space) lives in `model/` metadata and is applied in `shared/`, not in native code. |
+| `ImageModel` | uint8 input tensor built by `shared/` → every output tensor as floats, by output index (species now, traits later) | Preprocessing spec (size, crop, quantization) lives in `model/` metadata and is applied in `shared/`, not in native code; `shared/` maps outputs to heads by `outputIndex`. |
 | `CultivarTableSource` | → `CultivarTables` (versioned JSON bytes parsed in `shared/`) | Native only reads the bundled file; parsing and validation are shared. |
 | `SessionState` | Sealed hierarchy exposed to UI | Swift consumes via SKIE (sealed → enum) or flat state fields. |
 
@@ -263,5 +263,5 @@ Steps 1–3 change no user-visible behaviour and should land before new features
 - Which named cultivars and regions does v1 target? (sets priors, tables, R1/R2)
 - Leaf-only early-season mode: useful given leaves carry ~3 traits?
 - Oldest iPhone / Android device to support? (sets R3 budget; iOS floor is iOS 17 today)
-- LiteRT on iOS: CocoaPods per the quickstart, or Swift Package Manager if available for the chosen version? (affects build setup)
+- ~~LiteRT on iOS: CocoaPods or Swift Package Manager?~~ Decided: CocoaPods, TensorFlowLiteSwift 2.17.0 ([ADR-0007](adr/0007-litert-ios-via-cocoapods.md)).
 - Is a colour card on every board acceptable to users in the field?

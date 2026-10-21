@@ -12,7 +12,8 @@ enum CaptureScreenState {
     /// `coverage` is the latest live measurement, shown as a readout.
     case guiding(guidance: GuidanceState?, coverage: SampleCoverage?)
     case checkingPhoto
-    case photoAccepted(UIImage)
+    /// Passed the quality check; `species` says whether it shows sorghum, or that no model is installed.
+    case photoAccepted(UIImage, species: SpeciesCheck)
     case photoRejected(RejectionReason)
     case captureFailed
 }
@@ -28,7 +29,9 @@ final class CaptureModel {
     let camera: CameraSession
     let targetFrame: TargetFrame
     /// The shared capture rules. Its settings are the single source of every threshold.
-    private let flow = CaptureFlow()
+    /// Without a bundled species model the flow reports the species check as unavailable and
+    /// the screen says so.
+    private let flow: CaptureFlow
     private let tiltSensor = TiltSensor()
     private var latestCoverage: SampleCoverage?
     /// Kept here because the shared flow never holds platform images.
@@ -36,6 +39,8 @@ final class CaptureModel {
     private var isPermissionDenied = false
 
     init() {
+        let flow = BundledSpeciesModel.loadGate().map { CaptureFlow(speciesGate: $0) } ?? CaptureFlow()
+        self.flow = flow
         targetFrame = flow.settings.targetFrame
         // measureLiveFrame is pure and documented as safe on any thread.
         camera = CameraSession(measureLiveFrame: { [flow] frame in flow.measureLiveFrame(image: frame) })
@@ -92,8 +97,43 @@ final class CaptureModel {
         captureIfReady()
     }
 
+    /// Takes a photo now, without waiting for guidance to say READY (the shutter button).
+    /// The photo still goes through the same quality and species checks.
+    func captureNow() {
+        startCaptureAndCheck()
+    }
+
+    /// Analyses a photo picked from the photo library with the same shared checks as a camera
+    /// photo. The whole photo is used, since it has no target frame. Ignored while a photo is
+    /// already being checked.
+    func analyzeLibraryPhoto(_ photo: UIImage) {
+        guard flow.startCapture() else { return }
+        publishState()
+
+        let flow = self.flow
+        Task {
+            let outcome = await Task.detached(priority: .userInitiated) { () -> PhotoCheckOutcome in
+                let maxLongSide = Int(PhotoQualityKt.QUALITY_CHECK_LONG_SIDE_PIXELS)
+                guard let analysisCopy = pixelImage(ofLibraryPhoto: photo, maxLongSide: maxLongSide) else {
+                    return .unreadable
+                }
+                if let rejection = flow.checkPhoto(image: analysisCopy, source: .photoLibrary) {
+                    return .rejected(rejection)
+                }
+                return .accepted(photo, flow.checkSpecies(image: analysisCopy))
+            }.value
+            record(outcome)
+        }
+    }
+
     private func captureIfReady() {
         guard let guiding = flow.state as? CaptureStateGuiding, guiding.guidance == .ready else { return }
+        startCaptureAndCheck()
+    }
+
+    /// The flow ignores this unless live guidance is showing, so a second tap or a READY that
+    /// arrives during a check never starts a second capture.
+    private func startCaptureAndCheck() {
         guard flow.startCapture() else { return }
         publishState()
         Task { await captureAndCheckPhoto() }
@@ -121,21 +161,27 @@ final class CaptureModel {
             guard let analysisCopy = uprightPixelImage(of: photo, in: region, maxLongSide: maxLongSide) else {
                 return .unreadable
             }
-            if let rejection = flow.checkPhoto(image: analysisCopy) {
+            if let rejection = flow.checkPhoto(image: analysisCopy, source: .cameraTargetFrame) {
                 return .rejected(rejection)
             }
+            let species = flow.checkSpecies(image: analysisCopy)
             guard let displayImage = uprightImage(of: photo, in: region) else { return .unreadable }
-            return .accepted(displayImage)
+            return .accepted(displayImage, species)
         }.value
 
+        record(outcome)
+    }
+
+    /// Hands the background check's outcome to the shared flow and shows the new state.
+    private func record(_ outcome: PhotoCheckOutcome) {
         switch outcome {
         case .unreadable:
             flow.onCaptureFailed()
         case let .rejected(reason):
-            flow.onPhotoChecked(rejection: reason)
-        case let .accepted(displayImage):
+            flow.onPhotoChecked(rejection: reason, species: SpeciesCheckUnavailable.shared)
+        case let .accepted(displayImage, species):
             acceptedPhoto = displayImage
-            flow.onPhotoChecked(rejection: nil)
+            flow.onPhotoChecked(rejection: nil, species: species)
         }
         publishState()
     }
@@ -150,9 +196,9 @@ final class CaptureModel {
             state = .guiding(guidance: guiding.guidance, coverage: latestCoverage)
         case is CaptureStateCheckingPhoto:
             state = .checkingPhoto
-        case is CaptureStatePhotoAccepted:
+        case let accepted as CaptureStatePhotoAccepted:
             // acceptedPhoto is always set before the flow is told the photo passed.
-            state = acceptedPhoto.map { .photoAccepted($0) } ?? .captureFailed
+            state = acceptedPhoto.map { .photoAccepted($0, species: accepted.species) } ?? .captureFailed
         case let rejected as CaptureStatePhotoRejected:
             state = .photoRejected(rejected.reason)
         case is CaptureStateCameraUnavailable:
@@ -170,7 +216,7 @@ final class CaptureModel {
 private enum PhotoCheckOutcome: @unchecked Sendable {
     case unreadable
     case rejected(RejectionReason)
-    case accepted(UIImage)
+    case accepted(UIImage, SpeciesCheck)
 }
 
 /// The photo cropped to the target frame and turned upright, for showing to the user.

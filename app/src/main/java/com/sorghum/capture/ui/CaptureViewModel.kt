@@ -115,7 +115,8 @@ class CaptureViewModel : ViewModel() {
         mutableUiState.value = when (val state = flow.state) {
             is CaptureState.Guiding -> CaptureUiState.Guiding(state.guidance)
             CaptureState.CheckingPhoto -> CaptureUiState.CheckingPhoto
-            CaptureState.PhotoAccepted -> CaptureUiState.PhotoAccepted(checkNotNull(acceptedPhoto))
+            // Android has no species model yet (step 4 lands on iOS first), so species is always Unavailable.
+            is CaptureState.PhotoAccepted -> CaptureUiState.PhotoAccepted(checkNotNull(acceptedPhoto))
             is CaptureState.PhotoRejected -> CaptureUiState.PhotoRejected(state.reason)
             CaptureState.CaptureFailed -> CaptureUiState.CaptureFailed
             CaptureState.CameraUnavailable -> CaptureUiState.CameraUnavailable

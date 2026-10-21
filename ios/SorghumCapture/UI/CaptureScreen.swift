@@ -1,8 +1,11 @@
+import PhotosUI
 import Shared
 import SwiftUI
 
 struct CaptureScreen: View {
     @State private var model = CaptureModel()
+    /// The photo-library pick in progress; cleared once its image is handed to the model.
+    @State private var pickedPhoto: PhotosPickerItem?
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -16,12 +19,13 @@ struct CaptureScreen: View {
                 messageText("The camera could not be started. Close other camera apps and try again.")
             case .levelSensorUnavailable:
                 messageText("This device has no motion sensor, so the level guide cannot work.")
-            case let .guiding(guidance, coverage):
-                livePreview(guidance: guidance, coverage: coverage)
-            case .checkingPhoto:
-                livePreview(guidance: nil, coverage: nil, overrideMessage: "Checking photo…")
-            case let .photoAccepted(photo):
-                acceptedView(photo)
+            // One branch for both states, so SwiftUI keeps the same camera preview while the
+            // photo is checked. A new preview would re-attach the running capture session to a
+            // new layer, which blocks the main thread for seconds.
+            case .guiding, .checkingPhoto:
+                livePreview
+            case let .photoAccepted(photo, species):
+                acceptedView(photo, species: species)
             case let .photoRejected(reason):
                 messageWithButton(rejectionMessage(reason), buttonLabel: "Try again")
             case .captureFailed:
@@ -29,11 +33,31 @@ struct CaptureScreen: View {
             }
         }
         .task { await model.startCamera() }
+        .onChange(of: pickedPhoto) { _, item in
+            guard let item else { return }
+            Task {
+                // The system picker runs out of process, so no photo-library permission is needed.
+                // A photo that cannot be loaded or decoded is ignored; the picker can be used again.
+                if let data = try? await item.loadTransferable(type: Data.self), let photo = UIImage(data: data) {
+                    model.analyzeLibraryPhoto(photo)
+                }
+                pickedPhoto = nil
+            }
+        }
         .onDisappear { model.stopCamera() }
     }
 
-    private func livePreview(guidance: GuidanceState?, coverage: SampleCoverage?, overrideMessage: String? = nil) -> some View {
-        ZStack {
+    private var livePreview: some View {
+        let guidance: GuidanceState?
+        let coverage: SampleCoverage?
+        let overrideMessage: String?
+        if case let .guiding(currentGuidance, currentCoverage) = model.state {
+            (guidance, coverage, overrideMessage) = (currentGuidance, currentCoverage, nil)
+        } else {
+            (guidance, coverage, overrideMessage) = (nil, nil, "Checking photo…")
+        }
+
+        return ZStack {
             CameraPreview(camera: model.camera, targetFrame: model.targetFrame)
                 .ignoresSafeArea()
 
@@ -47,12 +71,47 @@ struct CaptureScreen: View {
             }
             .ignoresSafeArea()
 
-            VStack {
+            VStack(spacing: 16) {
                 Spacer()
                 statusPanel(message: overrideMessage ?? guidanceMessage(guidance), coverage: coverage)
+                HStack {
+                    libraryButton(isEnabled: overrideMessage == nil)
+                    Spacer()
+                    shutterButton(isEnabled: overrideMessage == nil)
+                    Spacer()
+                    // Balances the library button so the shutter stays centred.
+                    Color.clear.frame(width: 56, height: 56)
+                }
             }
             .padding()
         }
+    }
+
+    /// Picks a photo from the library to analyse instead of taking one.
+    private func libraryButton(isEnabled: Bool) -> some View {
+        PhotosPicker(selection: $pickedPhoto, matching: .images) {
+            Image(systemName: "photo.on.rectangle")
+                .font(.title2)
+                .foregroundStyle(.white)
+                .frame(width: 56, height: 56)
+                .background(.black.opacity(0.6), in: Circle())
+        }
+        .disabled(!isEnabled)
+        .accessibilityLabel("Choose photo from library")
+    }
+
+    /// Takes the photo by hand. Guidance still captures on its own when everything is aligned.
+    private func shutterButton(isEnabled: Bool) -> some View {
+        Button {
+            model.captureNow()
+        } label: {
+            Circle()
+                .strokeBorder(.white, lineWidth: 4)
+                .background(Circle().fill(.white.opacity(isEnabled ? 0.9 : 0.3)).padding(6))
+                .frame(width: 72, height: 72)
+        }
+        .disabled(!isEnabled)
+        .accessibilityLabel("Take photo")
     }
 
     private func statusPanel(message: String, coverage: SampleCoverage?) -> some View {
@@ -71,19 +130,59 @@ struct CaptureScreen: View {
         .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private func acceptedView(_ photo: UIImage) -> some View {
-        VStack(spacing: 16) {
-            Text("Photo accepted")
+    private func acceptedView(_ photo: UIImage, species: SpeciesCheck) -> some View {
+        let verdict = speciesVerdict(species)
+        return VStack(spacing: 16) {
+            Text(verdict.title)
                 .font(.headline)
+                .foregroundStyle(verdict.color)
+            Text(verdict.detail)
+                .font(.subheadline)
                 .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
             Image(uiImage: photo)
                 .resizable()
                 .scaledToFit()
-                .accessibilityLabel("Photo accepted")
+                .accessibilityLabel(verdict.title)
             Button("Retake") { model.retake() }
                 .buttonStyle(.borderedProminent)
         }
         .padding()
+    }
+
+    /// How the species result reads on screen. Only wording: the decision itself was made in
+    /// the shared core.
+    private func speciesVerdict(_ species: SpeciesCheck) -> (title: String, detail: String, color: Color) {
+        switch species {
+        case let sorghum as SpeciesCheckSorghum:
+            return ("Sorghum", "Photo accepted. Sorghum, \(percent(sorghum.sorghumProbability)) sure.", .green)
+        case let notSorghum as SpeciesCheckNotSorghum:
+            let detail = notSorghum.lookAlikeClassId.map { "This looks like \(lookAlikeName($0)), not sorghum." }
+                ?? "This does not look like sorghum."
+            return ("Not sorghum", detail, .orange)
+        case is SpeciesCheckNoPlant:
+            return ("No plant found", "Place the sample on the board inside the frame and retake.", .orange)
+        case is SpeciesCheckUnsure:
+            return ("Not sure it is sorghum", "Retake closer, in good light, or photograph another part of the plant.", .yellow)
+        default:
+            return ("Photo accepted", "Species check not installed yet: this photo was only checked for quality.", .white)
+        }
+    }
+
+    private func percent(_ probability: Float) -> String {
+        probability.formatted(.percent.precision(.fractionLength(0)))
+    }
+
+    /// Display names for the model's look-alike class ids (`model/sorghum_model/species_classes.py`).
+    private func lookAlikeName(_ classId: String) -> String {
+        switch classId {
+        case "johnson_grass": "Johnson grass"
+        case "maize": "maize"
+        case "sugarcane": "sugarcane"
+        case "pearl_millet": "pearl millet"
+        case "finger_millet": "finger millet"
+        default: classId.replacingOccurrences(of: "_", with: " ")
+        }
     }
 
     private var wholePercent: FloatingPointFormatStyle<Float>.Percent {
