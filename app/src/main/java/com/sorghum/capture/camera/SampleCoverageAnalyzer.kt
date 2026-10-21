@@ -4,6 +4,7 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import com.sorghum.capture.frame.TargetFrame
 import com.sorghum.capture.sample.GreenDetectionSettings
+import com.sorghum.capture.sample.LIVE_ANALYSIS_LONG_SIDE_PIXELS
 import com.sorghum.capture.sample.SampleCoverage
 import com.sorghum.capture.sample.measureSampleCoverage
 import java.util.concurrent.Executor
@@ -32,13 +33,5 @@ class SampleCoverageAnalyzer(
             result
         }
         callbackExecutor.execute { onCoverageMeasured(coverage) }
-    }
-
-    private companion object {
-        /**
-         * Live frames are shrunk to this size before analysis. A rough green count needs very
-         * few pixels, and a small image keeps analysis well under one frame interval.
-         */
-        const val LIVE_ANALYSIS_LONG_SIDE_PIXELS = 160
     }
 }

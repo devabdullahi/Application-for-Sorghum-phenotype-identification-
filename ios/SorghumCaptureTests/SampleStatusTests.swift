@@ -1,3 +1,4 @@
+import Shared
 import XCTest
 @testable import SorghumCapture
 

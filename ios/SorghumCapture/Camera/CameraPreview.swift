@@ -1,4 +1,5 @@
 import AVFoundation
+import Shared
 import SwiftUI
 
 /// Shows the live camera feed full-screen and tells the camera session where the target frame
@@ -52,7 +53,8 @@ final class PinchToZoom: NSObject {
 }
 
 final class PreviewView: UIView {
-    var targetFrame = TargetFrame()
+    /// Set by `CameraPreview` right after creation; nil only before that.
+    var targetFrame: TargetFrame?
     var onAnalysisRegionChanged: ((CGRect) -> Void)?
 
     override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
@@ -91,7 +93,7 @@ final class PreviewView: UIView {
     /// does this conversion itself, accounting for aspect-fill cropping and the sensor's
     /// landscape orientation, so live analysis looks at exactly what the user sees in the frame.
     private func reportAnalysisRegion() {
-        guard bounds.width > 0, bounds.height > 0 else { return }
+        guard let targetFrame, bounds.width > 0, bounds.height > 0 else { return }
         let frameOnScreen = targetFrame.rect(in: bounds.size)
         let region = previewLayer.metadataOutputRectConverted(fromLayerRect: frameOnScreen)
         guard !region.isEmpty, !region.isNull else { return }

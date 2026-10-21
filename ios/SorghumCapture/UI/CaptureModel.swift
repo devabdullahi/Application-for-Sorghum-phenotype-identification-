@@ -1,4 +1,5 @@
 import Observation
+import Shared
 
 /// What the capture screen shows.
 enum CaptureScreenState: Equatable {
@@ -16,16 +17,15 @@ final class CaptureModel {
 
     let camera: CameraSession
     let targetFrame: TargetFrame
+    /// The shared capture rules. Its settings are the single source of every threshold.
+    private let flow = CaptureFlow()
     private let statusSettings: SampleStatusSettings
 
-    init(
-        targetFrame: TargetFrame = TargetFrame(),
-        detectionSettings: GreenDetectionSettings = GreenDetectionSettings(),
-        statusSettings: SampleStatusSettings = SampleStatusSettings()
-    ) {
-        self.targetFrame = targetFrame
+    init(statusSettings: SampleStatusSettings = SampleStatusSettings()) {
         self.statusSettings = statusSettings
-        camera = CameraSession(settings: detectionSettings)
+        targetFrame = flow.settings.targetFrame
+        // measureLiveFrame is pure and documented as safe on any thread.
+        camera = CameraSession(measureLiveFrame: { [flow] frame in flow.measureLiveFrame(image: frame) })
         camera.onCoverageMeasured = { [weak self] coverage in
             self?.showCoverage(coverage)
         }

@@ -1,3 +1,5 @@
+import Shared
+
 /// What the green check says about the sample inside the target frame.
 enum SampleStatus: Equatable {
     case noSample
@@ -18,12 +20,12 @@ enum SampleStatus: Equatable {
 struct SampleStatusSettings {
     /// Fraction of the frame that must be green before a sample counts as present.
     /// Small, so thin leaves still count.
-    let minSampleFraction: Double
+    let minSampleFraction: Float
     /// Fraction of the frame's edge band that may be green. Above this, the sample crosses
     /// the frame edge and is cut off.
-    let maxEdgeGreenFraction: Double
+    let maxEdgeGreenFraction: Float
 
-    init(minSampleFraction: Double = 0.02, maxEdgeGreenFraction: Double = 0.05) {
+    init(minSampleFraction: Float = 0.02, maxEdgeGreenFraction: Float = 0.05) {
         precondition((0...1).contains(minSampleFraction),
                      "minSampleFraction must be within 0...1, was \(minSampleFraction)")
         precondition((0...1).contains(maxEdgeGreenFraction),

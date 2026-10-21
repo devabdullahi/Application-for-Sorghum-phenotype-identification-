@@ -12,10 +12,14 @@ kotlin {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
         }
     }
-    // iOS targets compile now so any non-portable API in commonMain fails the build early.
-    // The XCFramework for the iOS app is added in migration step 3.
-    iosArm64()
-    iosSimulatorArm64()
+    // The iOS app links this as a static framework named Shared (migration step 3). Xcode builds
+    // it through the embedAndSignAppleFrameworkForXcode task; see ios/project.yml.
+    listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
+        target.binaries.framework {
+            baseName = "Shared"
+            isStatic = true
+        }
+    }
 
     sourceSets {
         commonTest.dependencies {

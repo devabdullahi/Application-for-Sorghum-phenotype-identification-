@@ -1,4 +1,5 @@
 import AVFoundation
+import Shared
 import os
 
 enum CameraStartError: Error {
@@ -12,6 +13,9 @@ enum CameraStartError: Error {
 /// Frames are analysed on `analysisQueue`; results are delivered to `onCoverageMeasured` on the
 /// main thread so all UI state is only touched from one thread.
 ///
+/// The measurement itself is the shared core's (`measureLiveFrame`); this class only turns
+/// camera buffers into `PixelImage`s.
+///
 /// `@unchecked Sendable`: the session is configured and started only on `sessionQueue`, the
 /// analysis region is guarded by a lock, and `onCoverageMeasured` is set once before `start()`.
 final class CameraSession: NSObject, @unchecked Sendable {
@@ -20,7 +24,8 @@ final class CameraSession: NSObject, @unchecked Sendable {
     /// Called on the main thread with the coverage of each analysed frame.
     var onCoverageMeasured: ((SampleCoverage) -> Void)?
 
-    private let settings: GreenDetectionSettings
+    /// Pure shared function, safe to call on `analysisQueue`.
+    private let measureLiveFrame: @Sendable (PixelImage) -> SampleCoverage
     private let videoOutput = AVCaptureVideoDataOutput()
     private let sessionQueue = DispatchQueue(label: "com.sorghum.capture.session")
     private let analysisQueue = DispatchQueue(label: "com.sorghum.capture.analysis")
@@ -32,8 +37,8 @@ final class CameraSession: NSObject, @unchecked Sendable {
     /// whenever its layout changes, read on `analysisQueue`. Nil until the preview has laid out.
     private let analysisRegion = OSAllocatedUnfairLock<CGRect?>(initialState: nil)
 
-    init(settings: GreenDetectionSettings) {
-        self.settings = settings
+    init(measureLiveFrame: @escaping @Sendable (PixelImage) -> SampleCoverage) {
+        self.measureLiveFrame = measureLiveFrame
         super.init()
     }
 
@@ -124,70 +129,14 @@ extension CameraSession: AVCaptureVideoDataOutputSampleBufferDelegate {
                        from connection: AVCaptureConnection) {
         guard let region = analysisRegion.withLock({ $0 }),
               let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer),
-              let regionPixels = readPixels(of: pixelBuffer, in: region, maxLongSide: Self.liveAnalysisLongSidePixels)
+              let frame = uprightPixelImage(
+                  of: pixelBuffer,
+                  in: region,
+                  maxLongSide: Int(GreenCoverageKt.LIVE_ANALYSIS_LONG_SIDE_PIXELS)
+              )
         else { return }
 
-        let coverage = measureSampleCoverage(
-            pixels: regionPixels.pixels,
-            width: regionPixels.width,
-            height: regionPixels.height,
-            settings: settings
-        )
+        let coverage = measureLiveFrame(frame)
         DispatchQueue.main.async { self.onCoverageMeasured?(coverage) }
     }
-
-    /// Live frames are sampled down to this size before analysis. A rough green count needs very
-    /// few pixels, and a small image keeps analysis well under one frame interval.
-    /// Same value as the Android app.
-    private static let liveAnalysisLongSidePixels = 160
-}
-
-private struct RegionPixels {
-    let pixels: [RGBPixel]
-    let width: Int
-    let height: Int
-}
-
-/// Reads the pixels of a BGRA buffer inside `region` (fractions of the buffer size), taking
-/// every n-th pixel so the result's longer side is at most `maxLongSide`.
-///
-/// The region is not rotated to upright. That does not matter here: green coverage and the edge
-/// band are the same whichever way the region is turned.
-private func readPixels(of pixelBuffer: CVPixelBuffer, in region: CGRect, maxLongSide: Int) -> RegionPixels? {
-    let bufferWidth = CVPixelBufferGetWidth(pixelBuffer)
-    let bufferHeight = CVPixelBufferGetHeight(pixelBuffer)
-    let bufferBounds = CGRect(x: 0, y: 0, width: bufferWidth, height: bufferHeight)
-    let pixelRegion = CGRect(
-        x: region.minX * CGFloat(bufferWidth),
-        y: region.minY * CGFloat(bufferHeight),
-        width: region.width * CGFloat(bufferWidth),
-        height: region.height * CGFloat(bufferHeight)
-    ).integral.intersection(bufferBounds)
-    guard !pixelRegion.isEmpty else { return nil }
-
-    let longSide = Int(max(pixelRegion.width, pixelRegion.height))
-    let step = max(1, Int((Double(longSide) / Double(maxLongSide)).rounded(.up)))
-    let left = Int(pixelRegion.minX)
-    let top = Int(pixelRegion.minY)
-    let width = Int(pixelRegion.width) / step
-    let height = Int(pixelRegion.height) / step
-    guard width > 0, height > 0 else { return nil }
-
-    CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
-    defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
-    guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
-    let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
-    let bytes = baseAddress.assumingMemoryBound(to: UInt8.self)
-
-    var pixels: [RGBPixel] = []
-    pixels.reserveCapacity(width * height)
-    for row in 0..<height {
-        let rowStart = (top + row * step) * bytesPerRow
-        for column in 0..<width {
-            // BGRA byte order.
-            let offset = rowStart + (left + column * step) * 4
-            pixels.append(RGBPixel(red: bytes[offset + 2], green: bytes[offset + 1], blue: bytes[offset]))
-        }
-    }
-    return RegionPixels(pixels: pixels, width: width, height: height)
 }

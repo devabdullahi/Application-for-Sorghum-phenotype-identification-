@@ -64,7 +64,7 @@ struct CaptureScreen: View {
         .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private var wholePercent: FloatingPointFormatStyle<Double>.Percent {
+    private var wholePercent: FloatingPointFormatStyle<Float>.Percent {
         .percent.precision(.fractionLength(0))
     }
 

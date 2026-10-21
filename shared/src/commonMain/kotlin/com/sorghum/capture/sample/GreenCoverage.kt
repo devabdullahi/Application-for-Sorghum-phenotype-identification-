@@ -52,6 +52,13 @@ data class GreenDetectionSettings(
 }
 
 /**
+ * Live frames are shrunk so their longer side is at most this many pixels before
+ * [measureSampleCoverage]. A rough green count needs very few pixels, and a small image keeps
+ * analysis well under one frame interval. Thresholds tuned on live frames assume this size.
+ */
+const val LIVE_ANALYSIS_LONG_SIDE_PIXELS = 160
+
+/**
  * Measures green coverage of an image region.
  *
  * Used both on small live analysis frames and on the captured photo, so the live guidance
