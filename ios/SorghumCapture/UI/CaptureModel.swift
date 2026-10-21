@@ -95,8 +95,20 @@ final class CaptureModel {
         captureIfReady()
     }
 
+    /// Takes a photo now, without waiting for guidance to say READY (the shutter button).
+    /// The photo still goes through the same quality and species checks.
+    func captureNow() {
+        startCaptureAndCheck()
+    }
+
     private func captureIfReady() {
         guard let guiding = flow.state as? CaptureStateGuiding, guiding.guidance == .ready else { return }
+        startCaptureAndCheck()
+    }
+
+    /// The flow ignores this unless live guidance is showing, so a second tap or a READY that
+    /// arrives during a check never starts a second capture.
+    private func startCaptureAndCheck() {
         guard flow.startCapture() else { return }
         publishState()
         Task { await captureAndCheckPhoto() }

@@ -47,12 +47,27 @@ struct CaptureScreen: View {
             }
             .ignoresSafeArea()
 
-            VStack {
+            VStack(spacing: 16) {
                 Spacer()
                 statusPanel(message: overrideMessage ?? guidanceMessage(guidance), coverage: coverage)
+                shutterButton(isEnabled: overrideMessage == nil)
             }
             .padding()
         }
+    }
+
+    /// Takes the photo by hand. Guidance still captures on its own when everything is aligned.
+    private func shutterButton(isEnabled: Bool) -> some View {
+        Button {
+            model.captureNow()
+        } label: {
+            Circle()
+                .strokeBorder(.white, lineWidth: 4)
+                .background(Circle().fill(.white.opacity(isEnabled ? 0.9 : 0.3)).padding(6))
+                .frame(width: 72, height: 72)
+        }
+        .disabled(!isEnabled)
+        .accessibilityLabel("Take photo")
     }
 
     private func statusPanel(message: String, coverage: SampleCoverage?) -> some View {
