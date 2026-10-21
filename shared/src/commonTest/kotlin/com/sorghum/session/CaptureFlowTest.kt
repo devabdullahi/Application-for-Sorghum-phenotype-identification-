@@ -1,0 +1,109 @@
+package com.sorghum.session
+
+import com.sorghum.capture.guidance.DeviceTilt
+import com.sorghum.capture.guidance.GuidanceState
+import com.sorghum.capture.quality.RejectionReason
+import com.sorghum.capture.sample.SampleCoverage
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+class CaptureFlowTest {
+
+    private val level = DeviceTilt(pitchDegrees = 0f, rollDegrees = 0f)
+    private val tilted = DeviceTilt(pitchDegrees = 20f, rollDegrees = 0f)
+    private val sampleInFrame = SampleCoverage(greenFraction = 0.3f, edgeGreenFraction = 0f, greenConfidence = 1f)
+
+    @Test
+    fun `guidance waits for both tilt and frame readings`() {
+        val flow = CaptureFlow()
+
+        flow.onTiltChanged(level, timestampMillis = 0)
+        assertEquals(CaptureState.Guiding(guidance = null), flow.state)
+
+        flow.onSampleCoverageMeasured(sampleInFrame, timestampMillis = 10)
+        assertEquals(CaptureState.Guiding(GuidanceState.HOLD_STEADY), flow.state)
+    }
+
+    @Test
+    fun `holding aligned for the hold time makes the flow ready`() {
+        val flow = CaptureFlow()
+        val holdMillis = flow.settings.holdDurationMillis
+
+        flow.onTiltChanged(level, timestampMillis = 1_000)
+        flow.onSampleCoverageMeasured(sampleInFrame, timestampMillis = 1_000)
+        flow.onSampleCoverageMeasured(sampleInFrame, timestampMillis = 1_000 + holdMillis - 1)
+        assertEquals(CaptureState.Guiding(GuidanceState.HOLD_STEADY), flow.state)
+
+        flow.onSampleCoverageMeasured(sampleInFrame, timestampMillis = 1_000 + holdMillis)
+        assertEquals(CaptureState.Guiding(GuidanceState.READY), flow.state)
+    }
+
+    @Test
+    fun `tilt is reported before the sample`() {
+        val flow = CaptureFlow()
+
+        flow.onTiltChanged(tilted, timestampMillis = 0)
+        flow.onSampleCoverageMeasured(sampleInFrame, timestampMillis = 0)
+
+        assertEquals(CaptureState.Guiding(GuidanceState.TILT_TOP_DOWN), flow.state)
+    }
+
+    @Test
+    fun `capture starts only from live guidance`() {
+        val flow = CaptureFlow()
+
+        assertTrue(flow.startCapture())
+        assertEquals(CaptureState.CheckingPhoto, flow.state)
+        assertFalse(flow.startCapture())
+    }
+
+    @Test
+    fun `readings during the photo check do not bring guidance back`() {
+        val flow = CaptureFlow()
+        flow.startCapture()
+
+        flow.onTiltChanged(level, timestampMillis = 0)
+        flow.onSampleCoverageMeasured(sampleInFrame, timestampMillis = 0)
+
+        assertEquals(CaptureState.CheckingPhoto, flow.state)
+    }
+
+    @Test
+    fun `check result becomes accepted or rejected`() {
+        val flow = CaptureFlow()
+
+        flow.startCapture()
+        flow.onPhotoChecked(rejection = null)
+        assertEquals(CaptureState.PhotoAccepted, flow.state)
+
+        flow.retake()
+        flow.startCapture()
+        flow.onPhotoChecked(RejectionReason.BLURRY)
+        assertEquals(CaptureState.PhotoRejected(RejectionReason.BLURRY), flow.state)
+    }
+
+    @Test
+    fun `retake restarts the steady hold and waits for a fresh frame`() {
+        val flow = CaptureFlow()
+        flow.onTiltChanged(level, timestampMillis = 0)
+        flow.onSampleCoverageMeasured(sampleInFrame, timestampMillis = 0)
+        flow.startCapture()
+        flow.onPhotoChecked(RejectionReason.GLARE)
+
+        flow.retake()
+        assertEquals(CaptureState.Guiding(guidance = null), flow.state)
+
+        // An old hold must not carry over: the first aligned reading starts a new hold.
+        flow.onSampleCoverageMeasured(sampleInFrame, timestampMillis = 10_000)
+        assertEquals(CaptureState.Guiding(GuidanceState.HOLD_STEADY), flow.state)
+    }
+
+    @Test
+    fun `settings share one green detector between live and quality checks`() {
+        val settings = CaptureSettings()
+
+        assertEquals(settings.greenDetection, settings.quality.greenDetection)
+    }
+}

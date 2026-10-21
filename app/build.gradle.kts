@@ -38,6 +38,9 @@ android {
 }
 
 dependencies {
+    // All capture logic (frame, guidance, quality, sample) lives in the shared KMP core.
+    implementation(project(":shared"))
+
     // Android and lifecycle basics.
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -57,6 +60,6 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
 
-    // Guidance and quality logic is plain Kotlin, so it is tested on the JVM.
+    // Adapter-side pure code (e.g. pixel conversion) is tested on the JVM.
     testImplementation(libs.junit)
 }
