@@ -6,7 +6,11 @@ import com.sorghum.capture.quality.RejectionReason
 import com.sorghum.capture.sample.SampleCoverage
 import com.sorghum.imaging.Rgb
 import com.sorghum.imaging.uniformImage
+import com.sorghum.species.ImageModel
 import com.sorghum.species.SpeciesCheck
+import com.sorghum.species.SpeciesGate
+import com.sorghum.species.metadataJson
+import com.sorghum.species.parseModelMetadata
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -126,5 +130,15 @@ class CaptureFlowTest {
         flow.onPhotoChecked(rejection = null, species = SpeciesCheck.NotSorghum(lookAlikeClassId = "maize", sorghumProbability = 0.1f))
 
         assertEquals(CaptureState.PhotoAccepted(SpeciesCheck.NotSorghum("maize", 0.1f)), flow.state)
+    }
+
+    @Test
+    fun `a model that fails at run time leaves the photo unchecked`() {
+        val metadata = parseModelMetadata(metadataJson())
+        // Returns no outputs, as the iOS runner does after an interpreter error.
+        val broken = SpeciesGate(metadata, ImageModel { emptyList() })
+        val flow = CaptureFlow(broken)
+
+        assertEquals(SpeciesCheck.Unavailable, flow.checkSpecies(uniformImage(8, 8, Rgb(60, 140, 50))))
     }
 }

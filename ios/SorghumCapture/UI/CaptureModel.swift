@@ -29,9 +29,9 @@ final class CaptureModel {
     let camera: CameraSession
     let targetFrame: TargetFrame
     /// The shared capture rules. Its settings are the single source of every threshold.
-    /// No species model is bundled yet, so the flow reports the species check as unavailable
-    /// and the screen says so; the LiteRT runner arrives with the first trained model.
-    private let flow = CaptureFlow()
+    /// Without a bundled species model the flow reports the species check as unavailable and
+    /// the screen says so.
+    private let flow: CaptureFlow
     private let tiltSensor = TiltSensor()
     private var latestCoverage: SampleCoverage?
     /// Kept here because the shared flow never holds platform images.
@@ -39,6 +39,8 @@ final class CaptureModel {
     private var isPermissionDenied = false
 
     init() {
+        let flow = BundledSpeciesModel.loadGate().map { CaptureFlow(speciesGate: $0) } ?? CaptureFlow()
+        self.flow = flow
         targetFrame = flow.settings.targetFrame
         // measureLiveFrame is pure and documented as safe on any thread.
         camera = CameraSession(measureLiveFrame: { [flow] frame in flow.measureLiveFrame(image: frame) })
@@ -101,6 +103,29 @@ final class CaptureModel {
         startCaptureAndCheck()
     }
 
+    /// Analyses a photo picked from the photo library with the same shared checks as a camera
+    /// photo. The whole photo is used, since it has no target frame. Ignored while a photo is
+    /// already being checked.
+    func analyzeLibraryPhoto(_ photo: UIImage) {
+        guard flow.startCapture() else { return }
+        publishState()
+
+        let flow = self.flow
+        Task {
+            let outcome = await Task.detached(priority: .userInitiated) { () -> PhotoCheckOutcome in
+                let maxLongSide = Int(PhotoQualityKt.QUALITY_CHECK_LONG_SIDE_PIXELS)
+                guard let analysisCopy = pixelImage(ofLibraryPhoto: photo, maxLongSide: maxLongSide) else {
+                    return .unreadable
+                }
+                if let rejection = flow.checkPhoto(image: analysisCopy, source: .photoLibrary) {
+                    return .rejected(rejection)
+                }
+                return .accepted(photo, flow.checkSpecies(image: analysisCopy))
+            }.value
+            record(outcome)
+        }
+    }
+
     private func captureIfReady() {
         guard let guiding = flow.state as? CaptureStateGuiding, guiding.guidance == .ready else { return }
         startCaptureAndCheck()
@@ -136,7 +161,7 @@ final class CaptureModel {
             guard let analysisCopy = uprightPixelImage(of: photo, in: region, maxLongSide: maxLongSide) else {
                 return .unreadable
             }
-            if let rejection = flow.checkPhoto(image: analysisCopy) {
+            if let rejection = flow.checkPhoto(image: analysisCopy, source: .cameraTargetFrame) {
                 return .rejected(rejection)
             }
             let species = flow.checkSpecies(image: analysisCopy)
@@ -144,6 +169,11 @@ final class CaptureModel {
             return .accepted(displayImage, species)
         }.value
 
+        record(outcome)
+    }
+
+    /// Hands the background check's outcome to the shared flow and shows the new state.
+    private func record(_ outcome: PhotoCheckOutcome) {
         switch outcome {
         case .unreadable:
             flow.onCaptureFailed()

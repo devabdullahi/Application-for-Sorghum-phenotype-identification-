@@ -88,23 +88,40 @@ func uprightPixelImage(bgra: UnsafePointer<UInt8>, bytesPerRow: Int, region: Buf
     }
 }
 
+/// How the BGRA pixels must be turned to be upright.
+enum BufferOrientation {
+    /// Back-camera buffers: landscape (sensor orientation). In this portrait-only app the upright
+    /// image is the buffer turned 90° clockwise.
+    case sensorLandscape
+    /// Already upright, e.g. a library photo drawn with its orientation applied.
+    case upright
+}
+
 /// Core of the conversion, split out so channel order, row padding and rotation can be tested
 /// with a hand-made buffer.
 ///
-/// The back camera's buffers are landscape (sensor orientation); in this portrait-only app the
-/// upright image is the buffer turned 90° clockwise. So the upright image is `height` pixels
-/// wide, and upright pixel (x, y) comes from buffer column y, row (height - 1 - x).
-func uprightPixelImage(bgra: UnsafePointer<UInt8>, bytesPerRow: Int, width: Int, height: Int) -> PixelImage? {
+/// For `.sensorLandscape` the upright image is `height` pixels wide, and upright pixel (x, y)
+/// comes from buffer column y, row (height - 1 - x).
+func uprightPixelImage(
+    bgra: UnsafePointer<UInt8>,
+    bytesPerRow: Int,
+    width: Int,
+    height: Int,
+    orientation: BufferOrientation = .sensorLandscape
+) -> PixelImage? {
     guard width > 0, height > 0 else { return nil }
 
-    let uprightWidth = height
-    let uprightHeight = width
+    let isTurned = orientation == .sensorLandscape
+    let uprightWidth = isTurned ? height : width
+    let uprightHeight = isTurned ? width : height
     let bytesPerPixel = Int(PixelImage.companion.BYTES_PER_PIXEL)
     let rgb = KotlinByteArray(size: Int32(uprightWidth * uprightHeight * bytesPerPixel))
 
     for uprightY in 0..<uprightHeight {
         for uprightX in 0..<uprightWidth {
-            let source = (height - 1 - uprightX) * bytesPerRow + uprightY * 4
+            let source = isTurned
+                ? (height - 1 - uprightX) * bytesPerRow + uprightY * 4
+                : uprightY * bytesPerRow + uprightX * 4
             let target = Int32((uprightY * uprightWidth + uprightX) * bytesPerPixel)
             // BGRA source, RGB target.
             rgb.set(index: target, value: Int8(bitPattern: bgra[source + 2]))

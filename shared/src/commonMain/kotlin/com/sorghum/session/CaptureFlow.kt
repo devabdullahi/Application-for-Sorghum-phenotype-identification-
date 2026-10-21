@@ -6,6 +6,7 @@ import com.sorghum.capture.guidance.GuidanceSettings
 import com.sorghum.capture.guidance.GuidanceState
 import com.sorghum.capture.guidance.SteadyHoldTimer
 import com.sorghum.capture.guidance.evaluateGuidance
+import com.sorghum.capture.quality.PhotoSource
 import com.sorghum.capture.quality.QualitySettings
 import com.sorghum.capture.quality.RejectionReason
 import com.sorghum.capture.quality.checkPhotoQuality
@@ -110,16 +111,29 @@ class CaptureFlow(val settings: CaptureSettings, private val speciesGate: Specie
     /**
      * Checks a captured photo, cropped to the target frame and scaled so its longer side is
      * [com.sorghum.capture.quality.QUALITY_CHECK_LONG_SIDE_PIXELS]. Returns the rejection
-     * reason, or null if the photo is acceptable. Pure; call it off the main thread.
+     * reason, or null if the photo is acceptable. [source] decides which checks apply (see
+     * [PhotoSource]); library photos are not cropped. Pure; call it off the main thread.
      */
-    fun checkPhoto(image: PixelImage): RejectionReason? = checkPhotoQuality(image, settings.quality)
+    fun checkPhoto(image: PixelImage, source: PhotoSource = PhotoSource.CAMERA_TARGET_FRAME): RejectionReason? =
+        checkPhotoQuality(image, settings.quality, source)
 
     /**
      * Checks whether a photo that passed [checkPhoto] shows sorghum (ADR-0006). Pass the photo
      * cropped to the target frame at the quality-check size; the gate makes the model input.
      * Call off the main thread, after [checkPhoto] accepted the photo.
+     *
+     * A model that fails at run time (wrong output count or size) gives
+     * [SpeciesCheck.Unavailable]: the photo is reported as not checked, never guessed, and the
+     * failure does not crash the app through the Swift bridge.
      */
-    fun checkSpecies(image: PixelImage): SpeciesCheck = speciesGate?.check(image) ?: SpeciesCheck.Unavailable
+    fun checkSpecies(image: PixelImage): SpeciesCheck {
+        val gate = speciesGate ?: return SpeciesCheck.Unavailable
+        return try {
+            gate.check(image)
+        } catch (exception: IllegalStateException) {
+            SpeciesCheck.Unavailable
+        }
+    }
 
     /**
      * Records the result of [checkPhoto] and, for an accepted photo, of [checkSpecies].

@@ -1,0 +1,23 @@
+# LiteRT (TensorFlow Lite) for the species model, see docs/architecture/adr/0007-litert-ios-via-cocoapods.md.
+# After `xcodegen generate`, always run `pod install`, then open SorghumCapture.xcworkspace.
+platform :ios, '17.0'
+
+target 'SorghumCapture' do
+  use_frameworks!
+  # Exact version: the parity test compares this runtime's outputs with Android's (risk R7).
+  pod 'TensorFlowLiteSwift', '2.17.0'
+
+  # Unit tests run inside the app, so they only need to find the app's pods, not link them again.
+  target 'SorghumCaptureTests' do
+    inherit! :search_paths
+  end
+end
+
+# The pod still declares iOS 12, which current Xcode refuses to build; build it for the app's floor.
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '17.0'
+    end
+  end
+end

@@ -83,4 +83,31 @@ class PhotoQualityTest {
     private fun isLeaf(x: Int, y: Int) = x in 16 until 48 && y in 8 until 56
 
     private fun image(pixelAt: (x: Int, y: Int) -> Rgb): PixelImage = pixelImage(size, size, pixelAt)
+
+    @Test
+    fun `library photo without green is not rejected for missing sample`() {
+        // Sharp grey stripes, no green at all: no sample for a board photo, fine for a library photo.
+        val stripesWithoutGreen = image { x, _ -> if (x % 4 < 2) Rgb(90, 90, 90) else Rgb(170, 170, 170) }
+
+        assertEquals(RejectionReason.NO_SAMPLE, checkPhotoQuality(stripesWithoutGreen, settings, PhotoSource.CAMERA_TARGET_FRAME))
+        assertNull(checkPhotoQuality(stripesWithoutGreen, settings, PhotoSource.PHOTO_LIBRARY))
+    }
+
+    @Test
+    fun `library photo with a white background is not rejected for glare`() {
+        // Leaf stripes on a pure-white background: glare for a board photo, normal for a library photo.
+        val onWhite = image { x, y -> if (isLeaf(x, y) && x % 4 < 2) Rgb(60, 140, 50) else Rgb(255, 255, 255) }
+
+        assertEquals(RejectionReason.GLARE, checkPhotoQuality(onWhite, settings, PhotoSource.CAMERA_TARGET_FRAME))
+        assertNull(checkPhotoQuality(onWhite, settings, PhotoSource.PHOTO_LIBRARY))
+    }
+
+    @Test
+    fun `library photo is still checked for darkness and blur`() {
+        val darkPhoto = image { x, _ -> if (x % 4 < 2) Rgb(10, 10, 10) else Rgb(40, 40, 40) }
+        val flatPhoto = uniformImage(size, size, Rgb(150, 150, 150))
+
+        assertEquals(RejectionReason.TOO_DARK, checkPhotoQuality(darkPhoto, settings, PhotoSource.PHOTO_LIBRARY))
+        assertEquals(RejectionReason.BLURRY, checkPhotoQuality(flatPhoto, settings, PhotoSource.PHOTO_LIBRARY))
+    }
 }

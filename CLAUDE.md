@@ -41,7 +41,7 @@ Keep the KMP API plain (ADR-0003): data classes, enums, `ByteArray`, `List` and 
 - **`DeviceTilt`**: degrees. (0, 0) means flat, screen up. Positive pitch means the top edge is raised and positive roll means the right edge is raised. Convert Core Motion to this convention in the iOS adapter.
 - **Units**: lengths are mm after calibration and px before. Put the unit in the name (`seedLengthMm`, `longSidePx`). Inside `shared/`, colours after calibration are linear sRGB 0-1, and the name says so (`correctedLinearRgb`). Durations are `Long` ms from a monotonic clock that the caller passes in. `shared/` never reads a clock.
 - **`TraitEstimate`**: a probability per descriptor state, using the catalogue's state codes, every value > 0, sum = 1 within 1e-6. Continuous traits (seed size) carry value + uncertainty and are converted to state probabilities before reasoning. A trait never reports a bare state.
-- **`ImageModel`** (ADR-0006): one LiteRT model with several heads (species now, traits later). Takes a `PixelImage` already cropped and at model input size, and returns `Map<HeadId, FloatArray>`. `shared/` applies preprocessing, maps the species head to `SpeciesEstimate` and trait heads to `TraitEstimate`s and applies calibration temperatures. The native runner only loads the file and calls the interpreter.
+- **`ImageModel`** (ADR-0006, `shared/species/ImageModel.kt`): one LiteRT model with several heads (species now, traits later). Takes the uint8 input tensor that `shared/` built (crop, resize, quantization from `traits-vN.json`) and returns every output tensor as floats, by output index. `shared/` picks each head by its `outputIndex`, maps the species head to a `SpeciesCheck` and trait heads to `TraitEstimate`s, and applies calibration temperatures. The native runner only loads the file and calls the interpreter. iOS: `LiteRTImageModel` (ADR-0007).
 - **Assets**: `traits-vN.tflite` and `traits-vN.json` share N. The JSON holds the input spec, trait ids, state order and temperatures. `cultivars-vN.json` holds the schema version, the data version and the Genesys CC BY-SA attribution. `shared/` validates both at load and refuses a trait-catalogue mismatch.
 
 ## Domain rules that must not drift
@@ -88,7 +88,7 @@ Keep the KMP API plain (ADR-0003): data classes, enums, `ByteArray`, `List` and 
 - Adapters and UI get no unit tests. Keep them thin enough for that, and verify them on a device: `./run.sh [AvdName]` for Android, Xcode run for iOS.
 - Commands (verified 2026-10-19):
   - Android and shared: `./gradlew test :shared:allTests` from the repo root (`allTests` runs `commonTest` on the JVM and the iOS simulator).
-  - iOS: `cd ios && xcodegen generate && xcodebuild test -project SorghumCapture.xcodeproj -scheme SorghumCapture -destination 'platform=iOS Simulator,name=<device>'`. Get `<device>` from `xcrun simctl list devices available`. Run `xcodegen generate` after adding or removing Swift files, and never hand-edit `project.pbxproj`.
+  - iOS: `cd ios && xcodegen generate && pod install && xcodebuild test -workspace SorghumCapture.xcworkspace -scheme SorghumCapture -destination 'platform=iOS Simulator,name=<device>'`. Get `<device>` from `xcrun simctl list devices available`. Run `xcodegen generate && pod install` after adding or removing Swift files (ADR-0007), and never hand-edit `project.pbxproj`.
 - A change to any logic present on both platforms is done only when both suites pass.
 
 ## Change scope and review checklist

@@ -36,6 +36,24 @@ data class QualitySettings(
     val greenDetection: GreenDetectionSettings = GreenDetectionSettings(),
 )
 
+/** Where a photo came from, which decides the checks that apply to it. */
+enum class PhotoSource {
+    /** Taken in the app, cropped to the target frame over the board. All checks apply. */
+    CAMERA_TARGET_FRAME,
+
+    /**
+     * Picked from the photo library: any framing, background and plant part. Only the
+     * darkness and blur checks apply; two board-photo checks are skipped (decision 2026-10-21):
+     * - Sample present: green coverage only means "sample present" for a leaf on a plain board.
+     *   Foliage in general photos is often olive, shaded or a small part of the frame, and
+     *   panicles and grain are not green at all. The species check, whose model has a no-plant
+     *   class, decides whether a plant is there.
+     * - Glare: blown-out pixels mean light reflected off the leaf only on a board photo. In
+     *   general photos they are usually sky or a white background.
+     */
+    PHOTO_LIBRARY,
+}
+
 /** Longest side, in pixels, that photos are scaled to before [checkPhotoQuality]. */
 const val QUALITY_CHECK_LONG_SIDE_PIXELS = 640
 
@@ -46,15 +64,23 @@ const val QUALITY_CHECK_LONG_SIDE_PIXELS = 640
  * Checks run cheapest and most fundamental first: there is no point reporting blur on a
  * photo that has no sample in it.
  */
-fun checkPhotoQuality(image: PixelImage, settings: QualitySettings): RejectionReason? {
-    val coverage = measureSampleCoverage(image, settings.greenDetection)
-    if (coverage.greenFraction < settings.minSampleFraction) return RejectionReason.NO_SAMPLE
+fun checkPhotoQuality(
+    image: PixelImage,
+    settings: QualitySettings,
+    source: PhotoSource = PhotoSource.CAMERA_TARGET_FRAME,
+): RejectionReason? {
+    if (source == PhotoSource.CAMERA_TARGET_FRAME) {
+        val coverage = measureSampleCoverage(image, settings.greenDetection)
+        if (coverage.greenFraction < settings.minSampleFraction) return RejectionReason.NO_SAMPLE
+    }
 
     val luma = toLuma(image)
     if (luma.average() < settings.minMeanBrightness) return RejectionReason.TOO_DARK
 
-    val glarePixels = luma.count { it >= settings.glareBrightness }
-    if (glarePixels.toFloat() / luma.size > settings.maxGlareFraction) return RejectionReason.GLARE
+    if (source == PhotoSource.CAMERA_TARGET_FRAME) {
+        val glarePixels = luma.count { it >= settings.glareBrightness }
+        if (glarePixels.toFloat() / luma.size > settings.maxGlareFraction) return RejectionReason.GLARE
+    }
 
     if (laplacianVariance(luma, image.width, image.height) < settings.minSharpness) return RejectionReason.BLURRY
 

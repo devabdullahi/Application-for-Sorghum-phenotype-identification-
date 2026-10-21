@@ -1,8 +1,11 @@
+import PhotosUI
 import Shared
 import SwiftUI
 
 struct CaptureScreen: View {
     @State private var model = CaptureModel()
+    /// The photo-library pick in progress; cleared once its image is handed to the model.
+    @State private var pickedPhoto: PhotosPickerItem?
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -16,10 +19,11 @@ struct CaptureScreen: View {
                 messageText("The camera could not be started. Close other camera apps and try again.")
             case .levelSensorUnavailable:
                 messageText("This device has no motion sensor, so the level guide cannot work.")
-            case let .guiding(guidance, coverage):
-                livePreview(guidance: guidance, coverage: coverage)
-            case .checkingPhoto:
-                livePreview(guidance: nil, coverage: nil, overrideMessage: "Checking photo…")
+            // One branch for both states, so SwiftUI keeps the same camera preview while the
+            // photo is checked. A new preview would re-attach the running capture session to a
+            // new layer, which blocks the main thread for seconds.
+            case .guiding, .checkingPhoto:
+                livePreview
             case let .photoAccepted(photo, species):
                 acceptedView(photo, species: species)
             case let .photoRejected(reason):
@@ -29,11 +33,31 @@ struct CaptureScreen: View {
             }
         }
         .task { await model.startCamera() }
+        .onChange(of: pickedPhoto) { _, item in
+            guard let item else { return }
+            Task {
+                // The system picker runs out of process, so no photo-library permission is needed.
+                // A photo that cannot be loaded or decoded is ignored; the picker can be used again.
+                if let data = try? await item.loadTransferable(type: Data.self), let photo = UIImage(data: data) {
+                    model.analyzeLibraryPhoto(photo)
+                }
+                pickedPhoto = nil
+            }
+        }
         .onDisappear { model.stopCamera() }
     }
 
-    private func livePreview(guidance: GuidanceState?, coverage: SampleCoverage?, overrideMessage: String? = nil) -> some View {
-        ZStack {
+    private var livePreview: some View {
+        let guidance: GuidanceState?
+        let coverage: SampleCoverage?
+        let overrideMessage: String?
+        if case let .guiding(currentGuidance, currentCoverage) = model.state {
+            (guidance, coverage, overrideMessage) = (currentGuidance, currentCoverage, nil)
+        } else {
+            (guidance, coverage, overrideMessage) = (nil, nil, "Checking photo…")
+        }
+
+        return ZStack {
             CameraPreview(camera: model.camera, targetFrame: model.targetFrame)
                 .ignoresSafeArea()
 
@@ -50,10 +74,30 @@ struct CaptureScreen: View {
             VStack(spacing: 16) {
                 Spacer()
                 statusPanel(message: overrideMessage ?? guidanceMessage(guidance), coverage: coverage)
-                shutterButton(isEnabled: overrideMessage == nil)
+                HStack {
+                    libraryButton(isEnabled: overrideMessage == nil)
+                    Spacer()
+                    shutterButton(isEnabled: overrideMessage == nil)
+                    Spacer()
+                    // Balances the library button so the shutter stays centred.
+                    Color.clear.frame(width: 56, height: 56)
+                }
             }
             .padding()
         }
+    }
+
+    /// Picks a photo from the library to analyse instead of taking one.
+    private func libraryButton(isEnabled: Bool) -> some View {
+        PhotosPicker(selection: $pickedPhoto, matching: .images) {
+            Image(systemName: "photo.on.rectangle")
+                .font(.title2)
+                .foregroundStyle(.white)
+                .frame(width: 56, height: 56)
+                .background(.black.opacity(0.6), in: Circle())
+        }
+        .disabled(!isEnabled)
+        .accessibilityLabel("Choose photo from library")
     }
 
     /// Takes the photo by hand. Guidance still captures on its own when everything is aligned.
