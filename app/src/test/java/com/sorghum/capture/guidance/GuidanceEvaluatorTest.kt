@@ -8,7 +8,7 @@ class GuidanceEvaluatorTest {
 
     private val settings = GuidanceSettings(maxTiltDegrees = 5f, minSampleFraction = 0.02f, maxEdgeGreenFraction = 0.05f)
     private val level = DeviceTilt(pitchDegrees = 0f, rollDegrees = 0f)
-    private val sampleInsideFrame = SampleCoverage(greenFraction = 0.3f, edgeGreenFraction = 0f)
+    private val sampleInsideFrame = SampleCoverage(greenFraction = 0.3f, edgeGreenFraction = 0f, greenConfidence = 1f)
 
     @Test
     fun `level phone with sample inside frame asks the user to hold steady`() {
@@ -39,21 +39,21 @@ class GuidanceEvaluatorTest {
 
     @Test
     fun `tilt is reported before framing problems`() {
-        val noSample = SampleCoverage(greenFraction = 0f, edgeGreenFraction = 0f)
+        val noSample = SampleCoverage(greenFraction = 0f, edgeGreenFraction = 0f, greenConfidence = 1f)
 
         assertEquals(GuidanceState.TILT_TOP_DOWN, evaluateGuidance(DeviceTilt(20f, 0f), noSample, settings))
     }
 
     @Test
     fun `too little green means no sample`() {
-        val almostNoGreen = SampleCoverage(greenFraction = 0.01f, edgeGreenFraction = 0f)
+        val almostNoGreen = SampleCoverage(greenFraction = 0.01f, edgeGreenFraction = 0f, greenConfidence = 1f)
 
         assertEquals(GuidanceState.NO_SAMPLE, evaluateGuidance(level, almostNoGreen, settings))
     }
 
     @Test
     fun `green along the frame edge means the sample is cut off`() {
-        val crossesEdge = SampleCoverage(greenFraction = 0.4f, edgeGreenFraction = 0.2f)
+        val crossesEdge = SampleCoverage(greenFraction = 0.4f, edgeGreenFraction = 0.2f, greenConfidence = 1f)
 
         assertEquals(GuidanceState.SAMPLE_CUT_OFF, evaluateGuidance(level, crossesEdge, settings))
     }
