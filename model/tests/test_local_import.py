@@ -41,3 +41,13 @@ def test_requires_annotator(tmp_path):
 def test_folder_must_be_inside_data_root(tmp_path):
     with pytest.raises(ValueError, match="data root"):
         import_folder(tmp_path, tmp_path / "data", _source(GroupBy.FILE))
+
+
+def test_skips_hidden_files(tmp_path):
+    # macOS writes "._<name>" metadata files next to every file on exFAT drives; they keep
+    # the image suffix but are not images.
+    _image(tmp_path / "millet" / "plot-3" / "a.jpg")
+    (tmp_path / "millet" / "plot-3" / "._a.jpg").write_bytes(b"\x00\x05\x16\x07")
+    _image(tmp_path / "millet" / ".thumbnails" / "b.jpg")
+    records = import_folder(tmp_path / "millet", tmp_path, _source())
+    assert [record.source_id for record in records] == ["plot-3/a.jpg"]

@@ -53,6 +53,10 @@ def import_folder(folder: Path, data_root: Path, source: FolderSource) -> list[I
         if image.suffix.lower() not in IMAGE_SUFFIXES or not image.is_file():
             continue
         relative_to_folder = image.relative_to(folder)
+        # Hidden files and folders are never photos. On exFAT drives macOS writes a
+        # "._<name>" metadata file next to every file, with the same image suffix.
+        if any(part.startswith(".") for part in relative_to_folder.parts):
+            continue
         records.append(
             ImageRecord(
                 image_path=image.relative_to(data_root).as_posix(),
