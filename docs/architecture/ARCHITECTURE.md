@@ -118,7 +118,7 @@ These cross the KMP ↔ native boundary or the model boundary. Keep them plain d
 | `DeviceTilt` | pitch°, roll°; 0/0 = flat, screen up | Same convention as phase 1. |
 | `ImageModel` | uint8 input tensor built by `shared/` → every output tensor as floats, by output index (species now, traits later) | Preprocessing spec (size, crop, quantization) lives in `model/` metadata and is applied in `shared/`, not in native code; `shared/` maps outputs to heads by `outputIndex`. |
 | `CultivarTableSource` | → `CultivarTables` (versioned JSON bytes parsed in `shared/`) | Native only reads the bundled file; parsing and validation are shared. |
-| `SessionState` | Sealed hierarchy exposed to UI | Swift consumes via SKIE (sealed → enum) or flat state fields. |
+| `SessionState` | Sealed hierarchy exposed to UI as `StateFlow<SessionState>` | Swift consumes it through SKIE (`onEnum(of:)`, `AsyncSequence`), scoped to `session`; states, API and failure mapping in [ADR-0009](adr/0009-session-state.md). |
 
 Units: lengths in **mm**; colours inside `shared/` in **corrected linear sRGB 0–1** after calibration; probabilities always sum to 1 per trait.
 
