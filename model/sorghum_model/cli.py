@@ -65,7 +65,7 @@ def _add_inat_download(commands) -> None:
 
 def _run_inat_download(arguments) -> None:
     # Imported here so the other commands do not depend on network code.
-    from sorghum_model import inat
+    from sorghum_model import downloads, inat
 
     selected = [
         c for c in SPECIES_CLASSES
@@ -81,7 +81,7 @@ def _run_inat_download(arguments) -> None:
                     observation, species.name, arguments.max_photos_per_observation
                 ):
                     try:
-                        records.append(inat.download_photo(photo, arguments.data_root))
+                        records.append(downloads.download_photo(photo, arguments.data_root))
                     except (urllib.error.URLError, TimeoutError) as error:
                         failures += 1
                         print(f"warning: skipped {photo.url}: {error}", file=sys.stderr)
