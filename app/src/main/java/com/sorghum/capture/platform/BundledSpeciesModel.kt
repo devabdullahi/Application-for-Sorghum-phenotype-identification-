@@ -54,7 +54,11 @@ class BundledSpeciesModel private constructor(
                 Log.e(TAG, "$modelFileName could not be read", exception)
                 return null
             } catch (exception: IllegalArgumentException) {
-                Log.e(TAG, "$modelFileName is not a valid LiteRT model", exception)
+                // Also what LiteRT throws when a delegate (XNNPACK by default) cannot prepare a node.
+                Log.e(TAG, "$modelFileName is not a valid LiteRT model or cannot be prepared", exception)
+                return null
+            } catch (exception: IllegalStateException) {
+                Log.e(TAG, "$modelFileName could not be prepared by LiteRT", exception)
                 return null
             }
 

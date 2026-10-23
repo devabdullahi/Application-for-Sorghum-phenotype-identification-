@@ -23,7 +23,9 @@ import java.nio.channels.FileChannel
  *
  * @throws java.io.IOException if the asset is missing or compressed in the APK (it must be
  *   listed in `androidResources.noCompress` to be memory-mapped).
- * @throws IllegalArgumentException if the file is not a valid LiteRT model.
+ * @throws IllegalArgumentException if the file is not a valid LiteRT model, or the interpreter
+ *   or its default XNNPACK delegate cannot prepare it.
+ * @throws IllegalStateException if the interpreter cannot allocate its tensors.
  */
 class LiteRTImageModel(assets: AssetManager, assetFileName: String) : ImageModel, Closeable {
 
