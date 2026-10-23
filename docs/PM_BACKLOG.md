@@ -22,9 +22,9 @@ venv or another lane's worktree.
 
 | ID | Task | Lane | Depends on | Status |
 |---|---|---|---|---|
-| P1 | Rebase PR #1 / #2 onto main, merge | ML | — | cd rebasing |
-| P2 | Download, train, export species model (`traits-v1.tflite/json`, fixtures). Bar: >=90% held-out, INT8 within 2 pts of float | ML | P1 | cd working |
-| P3 | Bundle `traits-v1` in iOS, verify sorghum vs not-sorghum on simulator/device | iOS | P2 | blocked |
+| P1 | Re-cut PR #1 / #2 onto main (`feature/species-model`, `docs/keep-up-v2`), merge | ML | — | in progress (cd) |
+| P2 | Download (iNaturalist, GBIF, Wikimedia Commons, Mendeley, Figshare), train, export species model (`traits-v1.tflite/json`, fixtures). Bar: >=90% held-out, INT8 within 2 pts of float | ML | — | in progress (cd ML engineer) |
+| P3 | Bundle `traits-v1` in iOS, verify sorghum vs not-sorghum on simulator/device | iOS | P2 | prep in progress (cd Swift engineer, `feature/ios-species-model`) |
 | S1 | `traits` core: catalogue (IBPGR/ICRISAT ids, states, photo type, method), `TraitEstimate` with floor | shared | — | in progress |
 | S2 | `reasoning`: `CultivarTables` + JSON schema `cultivars-v1`, `CultivarTableSource` port, noise floor, naive Bayes, unrecognized/groups, explanation, correction recompute | shared | S1 | in progress (stacked on S1) |
 | S3 | `calibration`: colour card find, affine colour fit to linear sRGB, px/mm | shared | — | in progress |
@@ -33,7 +33,7 @@ venv or another lane's worktree.
 | S6 | `SessionState` design (ADR) + session pipeline: quality, species, calibration, traits, reasoning, correctTrait | shared | S2 S5 | todo |
 | S7 | iOS result screen + trait correction (renders `SessionState`) | iOS | S6 | todo |
 | S8 | Genesys table builder in `model/` (needs API key: stub until user adds it) | ML | S2 | todo, ask cd |
-| A1 | Android LiteRT runner + model bundling; check merged manifest for `INTERNET` | Android | P2 | todo (after iOS) |
+| A1 | Android LiteRT runner + model bundling; check merged manifest for `INTERNET` | Android | — (model only for final check) | in progress (cd Kotlin engineer, `feature/android-litert`) |
 | A2 | Android result screen | Android | S6 | todo (after iOS) |
 | D1 | ARCHITECTURE §10: close the LiteRT iOS question (ADR-0007 chose CocoaPods) | PM | — | todo |
 

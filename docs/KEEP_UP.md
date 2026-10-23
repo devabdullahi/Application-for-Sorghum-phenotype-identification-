@@ -1,6 +1,6 @@
 # Keep up: project status for the Android side
 
-Last updated: **2026-10-21**. Add a dated entry to the [log](#log) whenever something
+Last updated: **2026-10-23**. Add a dated entry to the [log](#log) whenever something
 lands or a decision changes, and keep the sections above it current.
 
 ## 1. In one paragraph
@@ -18,12 +18,14 @@ shells. The whole design is in [ARCHITECTURE.md](architecture/ARCHITECTURE.md).
 | Area | State | Branch |
 |---|---|---|
 | Phase 1 capture (Android): live level + green guidance, auto-capture, quality check | Built and working | `main` |
-| Phase 1 logic moved into `shared/` (KMP), images passed as `PixelImage` | Done (migration step 1) | `feature/kmp-shared` (PR #3) |
-| Capture state machine moved from `CaptureViewModel` to `shared/session/CaptureFlow` | Done (step 2) | `feature/kmp-shared` (PR #3) |
-| iOS app uses `Shared.framework` instead of Swift copies; Swift ports deleted | Done (step 3). Still open: R3 benchmark on a real iPhone (live green check under 5 ms/frame) and a real-device check | `feature/kmp-shared` (PR #3) |
-| Species model ("is it sorghum?") training code in `model/` | Code written, 47 tests pass; training not run yet | `feature/model-species-head` (PR #1) |
-| `shared/species`, `ImageModel` port, LiteRT runners | Not started (step 4) | — |
-| Colour card calibration, trait readers, reasoning | Not started (steps 5-7) | — |
+| Phase 1 logic moved into `shared/` (KMP), images passed as `PixelImage` | Done (migration step 1) | `main` (PR #3, merged) |
+| Capture state machine moved from `CaptureViewModel` to `shared/session/CaptureFlow` | Done (step 2) | `main` (PR #3, merged) |
+| iOS app uses `Shared.framework` instead of Swift copies; Swift ports deleted | Done (step 3). Still open: R3 benchmark on a real iPhone (live green check under 5 ms/frame) and a real-device check | `main` (PR #3, merged) |
+| `shared/species` (`ImageModel` port, `ModelMetadata`, `SpeciesGate`) + LiteRT runner on iPhone + photo-library analysis | Done; waits for a trained model file | `main` (PR #4, merged) |
+| Species model ("is it sorghum?"): data sources, training, INT8 export | Pipeline written; data download and training in progress on the LaCie drive | `feature/species-model` (replaces PR #1) |
+| Bundling `traits-vN` into iOS + model parity XCTest | In progress | `feature/ios-species-model` |
+| **Android species gate: LiteRT runner, asset loader, UI states** | In progress | `feature/android-litert` |
+| Colour card calibration, trait catalogue, reasoning (step 5-6) | In progress (PM session) | `feature/calibration`, `feature/traits-core`, `feature/reasoning` |
 
 Migration steps (ARCHITECTURE.md section 8): 1 shared module, 2 session, 3 iOS on shared,
 4 species gate, 5 calibration, 6 measured traits + reasoning, 7 learned traits.
@@ -84,9 +86,9 @@ Adapters and UI have no unit tests, so check them on a device.
 
 In order. Items marked *ready* can start now.
 
-1. **Review the KMP PR** ([#3](https://github.com/devabdullahi/Application-for-Sorghum-phenotype-identification-/pull/3), `feature/kmp-shared`) on a real device: guidance, auto-capture and
-   rejections must behave exactly as on `main`. *Ready now.*
-2. **Species gate on Android** (step 4; iOS goes first, then Android):
+1. **Check phase 1 on a real Android device** now that the KMP core is merged (PR #3):
+   guidance, auto-capture and rejections must behave as before. *Ready now.*
+2. **Species gate on Android** (step 4; being built on `feature/android-litert`, review it):
    - An `ImageModel` implementation using LiteRT: load `traits-vN.tflite` from assets once,
      feed the uint8 input, return `Map<HeadId, FloatArray>`. No preprocessing in Kotlin
      Android code; `shared/` does it from `traits-vN.json`.
@@ -119,7 +121,8 @@ Details in `model/README.md` on `feature/model-species-head`.
 
 | Question | Why it matters | Owner |
 |---|---|---|
-| **Licence policy conflict:** ARCHITECTURE.md section 2 allows non-commercial (NC) data for a research app, but `model/` was built commercial-safe only (CC0/BY/BY-SA, decided 2026-10-21). Which one holds? | NC would add many more iNaturalist photos | Product owner |
+| ~~Licence policy~~ Resolved 2026-10-23: CC BY-NC and BY-NC-SA allowed (non-commercial research app, ARCHITECTURE.md section 2). The trained model then carries NC terms. **ASSUMPTION — confirm** | Going commercial would need NC data removed and a retrain | Product owner |
+| Species pass bar: >=90% held-out sorghum vs not-sorghum, INT8 within 2 points of float. **ASSUMPTION — confirm** | Decides when the model ships | Product owner |
 | Does the species gate run on the board photos or on a separate whole-plant photo? | Changes what users photograph and what data we collect | Product owner |
 | Oldest Android device to support? | Sets the live-analysis performance budget | Team |
 | Which named cultivars and regions does v1 target? | Sets tables and priors | Product owner |
@@ -136,6 +139,14 @@ Details in `model/README.md` on `feature/model-species-head`.
 ## Log
 
 Newest first. One line per change that someone on Android should know about.
+
+- **2026-10-23:** Team loop started for the goal "the app recognises sorghum": ML (data +
+  training), Swift (bundle model in iOS + parity test) and Kotlin (Android LiteRT runner)
+  engineers under one PM. Work and data live on the LaCie drive (`/Volumes/LaCie`). Licences
+  widened to include NC. PRs #1 and #2 are re-cut onto `main` as `feature/species-model` and
+  `docs/keep-up-v2`.
+- **2026-10-22:** PR #3 (KMP core, iPhone on shared) and PR #4 (species gate in shared, LiteRT on
+  iPhone, photo library) merged to `main`.
 
 - **2026-10-21:** `model/` species-head pipeline written (`feature/model-species-head`):
   classes, iNaturalist downloader, grouped splits, Keras training, INT8 export, calibration.
