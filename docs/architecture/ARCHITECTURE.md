@@ -98,9 +98,9 @@ Rules:
 
 | Module | Owns | Exists today as |
 | --- | --- | --- |
-| `imaging` | `PixelImage(width, height, rgb: ByteArray)`, `NormalizedRect`, `PixelRect`, crop/downscale/rotate on `PixelImage` | `frame/TargetFrame.kt` (rect types); Bitmap code in `camera/FrameCropper.kt` to be replaced |
+| `imaging` | `PixelImage(width, height, rgb: ByteArray)`, `NormalizedRect`, `PixelRect`, crop/downscale/rotate on `PixelImage` | `frame/TargetFrame.kt` (rect types); Bitmap code in `androidApp/.../platform/FrameCropper.kt` to be replaced |
 | `capture` | Target frame, frame mapping, tilt → guidance state, steady-hold timer, photo quality check | `frame/`, `guidance/`, `quality/` |
-| `segmentation` | Plant mask by excess-green (leaves); background-contrast mask vs plain board (panicles, grain); sample coverage + edge touch | `sample/GreenCoverage.kt`; contrast mask is new |
+| `segmentation` | Plant mask by excess-green (leaves); background-contrast mask vs plain board (panicles, grain); sample coverage + edge touch | `sample/GreenCoverage.kt`; contrast mask in `segmentation/ContrastCoverage.kt` (example, not used by the apps yet) |
 | `species` | Map the model's species head to `SpeciesEstimate` (sorghum / named look-alike / other plant / no plant); decide continue, "not sorghum", or "unsure — retake" against a calibrated threshold from model metadata | New (ADR-0006) |
 | `calibration` | Find colour card, fit affine colour correction to known patch values, pixels-per-mm from patch size | New (port PlantCV method) |
 | `traits` | Trait catalogue (descriptor id, states, photo type, method); `TraitEstimate` (distribution over states, or value + uncertainty for continuous traits); measured readers (midrib colour, pigmentation, glume colour, grain colour, lustre, seed size); mapping of `ImageModel` trait heads to `TraitEstimate` | New |
@@ -232,7 +232,7 @@ sequenceDiagram
 
 ## 8. Migration from today
 
-Today: pure logic (`frame/ guidance/ quality/ sample/`, `session/CaptureFlow`) in `shared/` (steps 1-2), consumed by the Android app in `app/` and the iOS app in `ios/` through `Shared.framework` (step 3; the R3 device benchmark is still open).
+Today: pure logic (`frame/ guidance/ quality/ sample/`, `session/CaptureFlow`) in `shared/` (steps 1-2), consumed by the Android app in `androidApp/` (`ui`, `platform`) and the iOS app in `ios/` through `Shared.framework` (step 3; the R3 device benchmark is still open).
 
 1. **Create `shared/`** and move the pure packages unchanged (`frame`, `guidance`, `quality`, `sample`), replacing `Bitmap`/`Float` platform touch points with `PixelImage`. Move their JVM tests to `commonTest`. Android app depends on `shared/`; behaviour unchanged.
 2. **Move session logic** out of `CaptureViewModel` into `shared/session`; Android ViewModel becomes a thin adapter.

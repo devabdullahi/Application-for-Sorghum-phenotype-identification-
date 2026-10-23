@@ -13,6 +13,9 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
 dependencyResolutionManagement {
     // Keep all repository declarations in this file so modules cannot add their own.
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
@@ -23,5 +26,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "SorghumCapture"
-include(":app")
+include(":androidApp")
 include(":shared")

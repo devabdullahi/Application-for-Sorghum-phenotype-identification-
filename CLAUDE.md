@@ -11,14 +11,14 @@ The rules below are specific to this repo. They add to coding_instructions.md an
 - Offline mobile app that identifies sorghum cultivars from leaf, panicle and grain photos. It reads visible traits (IBPGR/ICRISAT descriptors) as probabilities over descriptor states, then runs a naive Bayes network (Genesys tables) to return the best matches with reasons, or "unrecognized".
 - Pipeline: capture + guidance, then quality check, then colour correction (colour card, mm scale), then trait reading (measured + learned), then reasoning + result.
 - Target architecture: `docs/architecture/ARCHITECTURE.md`. Decisions: `docs/architecture/adr/`. Phase 1 capture design: `phase1_overview.md`. If this file disagrees with ARCHITECTURE.md, ARCHITECTURE.md wins. Fix this file in the same change.
-- Today only phase 1 exists: its logic is in `shared/` (migration step 1), the Android app is in `app/` and a temporary Swift port is in `ios/`. Everything else below is the target, and new code must already follow it.
+- Today only phase 1 exists: its logic is in `shared/` (migration step 1), the Android app is in `androidApp/` (`ui`, `platform`) and a temporary Swift port is in `ios/`. Everything else below is the target, and new code must already follow it.
 
 ## Module map and dependency direction
 
 | Today | Target | Holds |
 |---|---|---|
 | `shared/.../capture/{frame,guidance,quality,sample}` | `shared/src/commonMain/kotlin/com/sorghum/{imaging,capture,segmentation,calibration,traits,reasoning,session}` | All logic |
-| `app/.../ui`, `app/.../camera`, `MainActivity` | `androidApp/ui`, `androidApp/platform` | Compose, CameraX, gravity sensor, LiteRT runner, asset loader |
+| `androidApp/.../ui`, `androidApp/.../platform`, `MainActivity` (done) | `androidApp/ui`, `androidApp/platform` | Compose, CameraX, gravity sensor, LiteRT runner, asset loader |
 | `ios/SorghumCapture` (links `Shared.framework`; Swift port removed) | `iosApp/UI`, `iosApp/Platform` | SwiftUI, AVFoundation, Core Motion, LiteRT runner, asset loader |
 | (none) | `model/` | Training, INT8 export, Genesys table builder, test fixtures |
 
@@ -54,7 +54,7 @@ Keep the KMP API plain (ADR-0003): data classes, enums, `ByteArray`, `List` and 
 - **Corrections recompute.** `correctTrait` replaces that trait's estimate with a near-certain one (floor still applies) and re-runs reasoning from the stored estimates. It never re-runs image work and never patches the previous posterior.
 - **Explanations come from the posterior's own numbers** (the traits that moved the ranking most). Never write them separately.
 - **Failure behaviour is fixed by ARCHITECTURE.md section 4.3.** No colour card means reject. A missing model means measured-only mode, announced in the UI. Invalid tables mean a startup error. Never guess a learned trait.
-- **Offline and private.** No networking code, HTTP clients, analytics, crash reporting or remote config. Photos stay in memory unless a feature explicitly adds on-device storage. Android keeps `INTERNET` and `ACCESS_NETWORK_STATE` removed with `tools:node="remove"` and `allowBackup="false"`. After adding any dependency, check `app/build/intermediates/merged_manifest/` for `INTERNET`. iOS adds no network entitlements or ATS keys.
+- **Offline and private.** No networking code, HTTP clients, analytics, crash reporting or remote config. Photos stay in memory unless a feature explicitly adds on-device storage. Android keeps `INTERNET` and `ACCESS_NETWORK_STATE` removed with `tools:node="remove"` and `allowBackup="false"`. After adding any dependency, check `androidApp/build/intermediates/merged_manifest/` for `INTERNET`. iOS adds no network entitlements or ATS keys.
 - **Portrait only on both platforms.** The tilt math and frame mapping assume it.
 
 ## Parity (same photo, same answer)
