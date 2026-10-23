@@ -33,10 +33,41 @@ data class SpeciesSettings(
     }
 }
 
+/** Why a photo was not checked for sorghum. */
+enum class SpeciesUnavailableReason {
+    /**
+     * No usable model: none is bundled, or it was refused at load (invalid metadata, no species
+     * head, unreadable file). [SpeciesGateLoad.Failed] says which, for the logs.
+     */
+    NO_MODEL,
+
+    /** The model returned no output at the species head's index, e.g. after an interpreter error. */
+    MISSING_SPECIES_OUTPUT,
+
+    /** The species output has a different number of logits than the metadata has classes. */
+    WRONG_LOGIT_COUNT,
+
+    /** A species logit is NaN or infinite, so no probability can be computed from it. */
+    NON_FINITE_LOGITS,
+}
+
 /** The outcome of the species check on one photo. */
 sealed interface SpeciesCheck {
-    /** No usable model is installed, so the photo was not checked. The UI must say so. */
-    data object Unavailable : SpeciesCheck
+    /**
+     * True if this photo may go on to cultivar matching (ADR-0006, ADR-0009). Only a confirmed
+     * sorghum continues, plus an unchecked photo in measured-only mode (ARCHITECTURE.md
+     * section 4.3). Unsure and no-plant mean retake and not-sorghum means stop, so none of
+     * them is ever matched. The session and both apps read this instead of deciding themselves.
+     */
+    val allowsCultivarMatching: Boolean
+        get() = this is Sorghum || this is Unavailable
+
+    /**
+     * The photo was not checked for sorghum, for [reason]. The app runs in measured-only mode
+     * and the UI must say the species was not checked (ARCHITECTURE.md section 4.3). This is
+     * not a verdict: it never means "not sorghum" or "retake".
+     */
+    data class Unavailable(val reason: SpeciesUnavailableReason) : SpeciesCheck
 
     /** The sample is sorghum; cultivar matching may continue. */
     data class Sorghum(val sorghumProbability: Float) : SpeciesCheck
@@ -67,13 +98,24 @@ class SpeciesGate(
     /** Uses the default settings. Swift cannot use Kotlin default arguments, hence this overload. */
     constructor(metadata: ModelMetadata, model: ImageModel) : this(metadata, model, SpeciesSettings())
 
-    /** Checks [photo]: the upright photo cropped to the target frame, at any size. */
+    /**
+     * Checks [photo]: the upright photo cropped to the target frame, at any size.
+     *
+     * Never throws. A model whose output does not fit the metadata gives
+     * [SpeciesCheck.Unavailable] with the reason, because a crash here would take down the
+     * iPhone app: Swift cannot catch a Kotlin exception from a function without `@Throws`.
+     */
     fun check(photo: PixelImage): SpeciesCheck {
         val outputs = model.run(modelInputTensor(photo, metadata))
         val logits = outputs.getOrNull(metadata.speciesOutputIndex)
-            ?: error("Model returned ${outputs.size} outputs; species head expects index ${metadata.speciesOutputIndex}")
-        check(logits.size == metadata.speciesClasses.size) {
-            "Species head returned ${logits.size} logits for ${metadata.speciesClasses.size} classes"
+            ?: return SpeciesCheck.Unavailable(SpeciesUnavailableReason.MISSING_SPECIES_OUTPUT)
+        if (logits.size != metadata.speciesClasses.size) {
+            return SpeciesCheck.Unavailable(SpeciesUnavailableReason.WRONG_LOGIT_COUNT)
+        }
+        // Softmax of a NaN or infinite logit gives NaN probabilities, which would read as
+        // "unsure" and ask for a pointless retake; the model output is broken instead.
+        if (logits.any { !it.isFinite() }) {
+            return SpeciesCheck.Unavailable(SpeciesUnavailableReason.NON_FINITE_LOGITS)
         }
         return decideSpecies(speciesProbabilities(logits, metadata.speciesTemperature), metadata, settings)
     }
