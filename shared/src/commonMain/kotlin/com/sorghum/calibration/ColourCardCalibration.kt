@@ -21,7 +21,7 @@ import kotlin.math.sqrt
  *   [sampleRect]. Per channel rather than luma, because a green leaf over a red patch can have
  *   the same brightness as the patch and would be invisible in luma.
  */
-data class CardPatch(
+internal data class CardPatch(
     val referenceIndex: Int,
     val sampleRect: PixelRect,
     val meanSrgb: SrgbColour,
@@ -39,7 +39,7 @@ data class CardPatch(
  * @param gridEdgeContrast how clearly the grid stood out (see [ColourCardSettings.minGridEdgeContrast]);
  *   the weaker of the two axes.
  */
-data class DetectedColourCard(
+internal data class DetectedColourCard(
     val patches: List<CardPatch>,
     val rotationDegrees: Int,
     val patchPitchPx: Float,
@@ -48,7 +48,7 @@ data class DetectedColourCard(
 )
 
 /** Why no usable colour card was found. Each maps to a user message; all mean "retake". */
-enum class CardNotFoundReason {
+internal enum class CardNotFoundReason {
     /** No regular 4 x 6 grid in the card region: card missing, out of the slot, or too small. */
     NO_GRID,
 
@@ -67,7 +67,7 @@ enum class CardNotFoundReason {
  * section 4.3, [NotFound] rejects the photo, because colour traits are meaningless without
  * correction.
  */
-sealed interface ColourCardCalibration {
+internal sealed interface ColourCardCalibration {
     /**
      * The card was found and fits.
      *
@@ -83,10 +83,6 @@ sealed interface ColourCardCalibration {
     /** No usable card; the photo must be retaken. */
     data class NotFound(val reason: CardNotFoundReason) : ColourCardCalibration
 }
-
-/** [calibrateWithColourCard] with default settings. Swift cannot use Kotlin default arguments, hence this overload. */
-fun calibrateWithColourCard(image: PixelImage, cardRegion: NormalizedRect): ColourCardCalibration =
-    calibrateWithColourCard(image, cardRegion, ColourCardSettings())
 
 /**
  * Finds the ColorChecker Classic Mini in [cardRegion] of [image], fits a colour correction to
@@ -104,16 +100,17 @@ fun calibrateWithColourCard(image: PixelImage, cardRegion: NormalizedRect): Colo
  * card orientation and keep the best → check the fit. The best-fitting result wins.
  *
  * Pure and synchronous; run it on the session's background worker. Cost grows with the square
- * of the region size, so pass a downscaled photo (about 1000 px on the long side is plenty)
- * and scale [ColourCardCalibration.Calibrated.pixelsPerMm] to other resolutions.
+ * of the region size, and the pixel thresholds in [ColourCardSettings] assume a photo
+ * downscaled to [CALIBRATION_LONG_SIDE_PIXELS] on the long side; scale
+ * [ColourCardCalibration.Calibrated.pixelsPerMm] to other resolutions.
  *
  * @param image the upright photo.
  * @param cardRegion where the card slot is, in fractions of [image].
  */
-fun calibrateWithColourCard(
+internal fun calibrateWithColourCard(
     image: PixelImage,
     cardRegion: NormalizedRect,
-    settings: ColourCardSettings,
+    settings: ColourCardSettings = ColourCardSettings(),
 ): ColourCardCalibration {
     val region = cardRegion.toPixelRect(image)
     if (region.width < 2 || region.height < 2) return ColourCardCalibration.NotFound(CardNotFoundReason.NO_GRID)
@@ -156,7 +153,7 @@ private fun calibrateOnGrid(image: PixelImage, region: PixelRect, grid: CardGrid
     val bestFit = grid.layout.rotationsDegrees
         .mapNotNull { rotation -> fitForRotation(cellSamples, grid.layout, rotation) }
         .minByOrNull { it.correction.meanDeltaE }
-    if (bestFit == null || bestFit.correction.meanDeltaE > settings.maxMeanDeltaE) {
+    if (bestFit == null || !isColourFitAcceptable(bestFit.correction.meanDeltaE, settings)) {
         return ColourCardCalibration.NotFound(CardNotFoundReason.POOR_COLOUR_FIT)
     }
 
@@ -169,6 +166,14 @@ private fun calibrateOnGrid(image: PixelImage, region: PixelRect, grid: CardGrid
     )
     return ColourCardCalibration.Calibrated(card, bestFit.correction, meanPitch / ColorCheckerClassicMini.PATCH_PITCH_MM)
 }
+
+/**
+ * Whether a colour fit with residual [meanDeltaE] is good enough to trust. Written so that it
+ * fails closed: a NaN residual (from a numerically broken fit) compares false with everything,
+ * so `meanDeltaE > max` would wrongly accept it.
+ */
+internal fun isColourFitAcceptable(meanDeltaE: Float, settings: ColourCardSettings): Boolean =
+    meanDeltaE <= settings.maxMeanDeltaE
 
 /**
  * How the card's grid lies in the photo. A landscape card (rotation 0 or 180) shows 6 columns
@@ -223,11 +228,16 @@ private fun sampleRect(image: PixelImage, rect: PixelRect, column: Int, row: Int
     for (y in rect.top until rect.bottom) {
         for (x in rect.left until rect.right) {
             val pixel = y * image.width + x
-            val channels = intArrayOf(image.redAt(pixel), image.greenAt(pixel), image.blueAt(pixel))
-            for (channel in 0 until 3) {
-                sums[channel] += channels[channel]
-                squaredSums[channel] += channels[channel].toDouble() * channels[channel]
-            }
+            // Locals rather than an array: this loop runs for every sampled pixel.
+            val red = image.redAt(pixel).toDouble()
+            val green = image.greenAt(pixel).toDouble()
+            val blue = image.blueAt(pixel).toDouble()
+            sums[0] += red
+            sums[1] += green
+            sums[2] += blue
+            squaredSums[0] += red * red
+            squaredSums[1] += green * green
+            squaredSums[2] += blue * blue
         }
     }
     val count = rect.width * rect.height

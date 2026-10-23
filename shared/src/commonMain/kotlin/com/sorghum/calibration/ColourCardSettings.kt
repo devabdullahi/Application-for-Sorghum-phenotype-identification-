@@ -4,7 +4,8 @@ package com.sorghum.calibration
  * Thresholds and search tolerances for finding the colour card and trusting its fit.
  *
  * All values are initial guesses, tune on real photos of the board taken with the target
- * phones. Pixel values refer to the image passed to [calibrateWithColourCard].
+ * phones. Pixel values refer to the image passed to [calibrateWithColourCard], downscaled to
+ * [CALIBRATION_LONG_SIDE_PIXELS] on the long side.
  *
  * @param minGridFractionOfHint the patch grid must span at least this fraction of the card
  *   region along each axis. The capture layout draws the card slot to fit the card, so a grid
@@ -17,9 +18,10 @@ package com.sorghum.calibration
  * @param sampleFractionOfPitch side of the square sampled at each patch centre, as a fraction
  *   of the pitch. Patches fill about 85% of the pitch; sampling only the middle half keeps
  *   samples off the gaps despite small grid errors, blur and rotation.
- * @param minPatchPitchPx smallest accepted patch pitch (mean of both axes), in pixels; also the
- *   lower end of the grid search. Below about 6 px the sampled square is only a few pixels and
- *   edge blur reaches its centre, so the card is too small in the photo to trust.
+ * @param minPatchPitchPx smallest accepted patch pitch (mean of both axes), in pixels of a
+ *   [CALIBRATION_LONG_SIDE_PIXELS] photo; also the lower end of the grid search. Below about
+ *   6 px the sampled square is only a few pixels and edge blur reaches its centre, so the card
+ *   is too small in the photo to trust.
  * @param minGridEdgeContrast how much more colour change, in 0–255 levels, the grid lines must
  *   carry than equally wide bands inside the patches (see [GridAxis.edgeContrast]). A blank
  *   board scores about 0; a card whose gaps step 40+ levels against the patches scores well
@@ -29,13 +31,14 @@ package com.sorghum.calibration
  *   is seen at a slant (the level guidance should prevent this) or the grid is wrong; either way
  *   the mm scale would differ by direction.
  * @param maxPatchChannelStdDev largest allowed standard deviation of any colour channel (0–255)
- *   inside one patch sample (see [CardPatch.channelStdDev]). Sensor noise gives a few levels; a leaf, finger, shadow edge or glare spot over the
- *   patch gives far more, and its mean colour would then mislead the fit.
+ *   inside one patch sample (see [CardPatch.channelStdDev]). Sensor noise gives a few levels;
+ *   a leaf, finger, shadow edge or glare spot over the patch gives far more, and its mean
+ *   colour would then mislead the fit.
  * @param maxMeanDeltaE largest allowed mean CIE76 ΔE between corrected and reference patches.
  *   An affine fit on a good phone photo typically leaves a few ΔE (sensor non-linearity, pigment
  *   ageing); much more means the card is misread or partly covered. 6 is a first guess.
  */
-data class ColourCardSettings(
+internal data class ColourCardSettings(
     val minGridFractionOfHint: Float = 0.3f,
     val gridBoundaryWindowFraction: Float = 0.2f,
     val sampleFractionOfPitch: Float = 0.5f,
@@ -63,3 +66,12 @@ data class ColourCardSettings(
         require(maxMeanDeltaE > 0f) { "maxMeanDeltaE must be positive, was $maxMeanDeltaE" }
     }
 }
+
+/**
+ * Long side, in pixels, of the photo the session passes to [calibrateWithColourCard]. The
+ * pixel thresholds in [ColourCardSettings] (such as [ColourCardSettings.minPatchPitchPx]) assume
+ * this size, so change them together. 1000 px is an initial guess, tune on real photos: large
+ * enough that the card's patches stay several times the minimum pitch, small enough that the
+ * grid search, whose cost grows with the square of the region size, stays fast.
+ */
+internal const val CALIBRATION_LONG_SIDE_PIXELS = 1000

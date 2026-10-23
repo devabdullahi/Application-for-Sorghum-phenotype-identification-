@@ -9,10 +9,10 @@ import kotlin.math.sqrt
  * channels in 0..1; fitted or reference values may fall slightly outside, which is kept rather
  * than clipped so least squares sees the true numbers.
  */
-data class LinearRgb(val red: Double, val green: Double, val blue: Double)
+internal data class LinearRgb(val red: Double, val green: Double, val blue: Double)
 
 /** A colour as the camera encoded it: 8-bit sRGB channel values 0–255 (averages, so fractional). */
-data class SrgbColour(val red: Float, val green: Float, val blue: Float) {
+internal data class SrgbColour(val red: Float, val green: Float, val blue: Float) {
     /** Removes the sRGB transfer curve, giving linear light 0..1. */
     fun toLinear(): LinearRgb = LinearRgb(
         srgbToLinear(red / 255.0),
@@ -22,7 +22,7 @@ data class SrgbColour(val red: Float, val green: Float, val blue: Float) {
 }
 
 /** A CIE 1976 L*a*b* colour relative to the ICC D50 white, the space X-Rite publishes card values in. */
-data class LabColour(val lightness: Double, val a: Double, val b: Double)
+internal data class LabColour(val lightness: Double, val a: Double, val b: Double)
 
 /** Decodes one sRGB channel (0..1) to linear light, per IEC 61966-2-1. */
 internal fun srgbToLinear(encoded: Double): Double =

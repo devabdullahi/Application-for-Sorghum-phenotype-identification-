@@ -2,6 +2,8 @@ package com.sorghum.calibration
 
 import com.sorghum.imaging.Rgb
 import com.sorghum.imaging.pixelImage
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -46,6 +48,20 @@ class ColourCorrectionTest {
     fun `fit fails when all patches look the same`() {
         // A flat grey card carries no colour information; the system has no unique solution.
         val measured = List(reference.size) { LinearRgb(0.3, 0.3, 0.3) }
+
+        assertNull(fit(measured))
+    }
+
+    @Test
+    fun `fit fails when patches are nearly grey`() {
+        // Grey levels vary, but R, G and B differ by only 1e-5: the three colour columns are
+        // nearly collinear, so any "fit" would be huge coefficients amplifying noise. Pivots
+        // here are about 1e-9, above an absolute 1e-10 cut-off but far below the scale of the
+        // normal matrix (its largest diagonal entry is the patch count, 24).
+        val measured = reference.indices.map { index ->
+            val grey = 0.05 + 0.85 * index / (reference.size - 1)
+            LinearRgb(grey + 1e-5 * sin(index.toDouble()), grey, grey + 1e-5 * cos(index.toDouble()))
+        }
 
         assertNull(fit(measured))
     }
