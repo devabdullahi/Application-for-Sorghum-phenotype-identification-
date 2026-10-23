@@ -28,9 +28,9 @@ venv or another lane's worktree.
 | S1 | `traits` core: catalogue (IBPGR/ICRISAT ids, states, photo type, method), `TraitEstimate` with floor | shared | — | done (PR #7) |
 | S2 | `reasoning`: `CultivarTables` + JSON schema `cultivars-v1`, `CultivarTableSource` port, noise floor, naive Bayes, unrecognized/groups, explanation, correction recompute | shared | S1 | review fixes in progress (PR #8) |
 | S3 | `calibration`: colour card find, affine colour fit to linear sRGB, px/mm | shared | — | done (PR #9, ADR-0008); follow-ups C1 |
-| S4 | `segmentation`: contrast mask vs plain board (panicle, grain); move `GreenCoverage` into `segmentation` | shared | — | in progress (`feature/segmentation`) |
+| S4 | `segmentation`: contrast mask vs plain board (panicle, grain); move `GreenCoverage` into `segmentation` | shared | — | in progress (`feature/segmentation`, committed, finishing checks) |
 | S5 | Measured trait readers (grain colour, glume colour, seed size, ...) | shared | S1 S3 S4 | todo |
-| S6 | `SessionState` design (ADR) + session pipeline: quality, species, calibration, traits, reasoning, correctTrait | shared | S2 S5 | todo |
+| S6 | `SessionState` design (ADR-0009, merged #13) + session pipeline. S6a.1: add SKIE (sealed + Flow, `session` only), check iOS build, coordinate with cd PR #12. S6a.2: `IdentificationSession` wrapping `CaptureFlow`. Rules from cd: model missing, metadata invalid or no species head = `SpeciesGate` unavailable = "species not checked" (measured-only); an unsure gate result never passes to matching (retake) | shared | S2 S5 | design done; S6a.1 todo |
 | S7 | iOS result screen + trait correction (renders `SessionState`) | iOS | S6 | todo |
 | S8 | Genesys table builder in `model/` (needs API key: stub until user adds it) | ML | S2 | todo, ask cd |
 | A1 | Android LiteRT runner + model bundling; check merged manifest for `INTERNET` | Android | — (model only for final check) | in progress (cd Kotlin engineer, `feature/android-litert`) |
