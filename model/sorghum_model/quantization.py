@@ -27,11 +27,13 @@ class LogitTolerance:
     """How finely the INT8 model can resolve a logit, for the parity tests' tolerance.
 
     Attributes:
-        key: the expected.json key it is written under. "logitStep" is a quantization step
-            read from the model; "logitParityMaxDelta" is the largest |float - INT8| logit
-            difference measured on the test split, used when the model has no int8 logit
-            tensor.
-        value: the step or the delta, in logit units.
+        key: which kind of value this is. "logitStep" is a quantization step read from the
+            model; "logitParityMaxDelta" is the largest |float - INT8| logit difference
+            measured on the test split, used when the model has no int8 logit tensor.
+        value: the step or the delta, in logit units. Always written to expected.json as
+            top-level `logitStep`, because the iOS parity test (PR #12) checks every logit
+            within 2 * logitStep and fails without the field; a measured delta is also
+            written under `logitParityMaxDelta` so a reader can tell the two apart.
         source: which tensor or measurement the value came from, for the reader.
     """
 
@@ -81,6 +83,14 @@ def measured_logit_tolerance(float_logits: np.ndarray, int8_logits: np.ndarray) 
         float(np.abs(float_logits - int8_logits).max()),
         "largest |float - INT8| logit difference on the test split",
     )
+
+
+def logit_tolerance_fields(tolerance: LogitTolerance) -> dict:
+    """The expected.json fields for a tolerance; top-level `logitStep` is always present."""
+    fields = {LOGIT_STEP_KEY: tolerance.value, "logitToleranceSource": tolerance.source}
+    if tolerance.key != LOGIT_STEP_KEY:
+        fields[tolerance.key] = tolerance.value
+    return fields
 
 
 def _is_integer(detail: dict) -> bool:

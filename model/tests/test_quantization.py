@@ -3,7 +3,9 @@ import numpy as np
 from sorghum_model.quantization import (
     LOGIT_PARITY_MAX_DELTA_KEY,
     LOGIT_STEP_KEY,
+    LogitTolerance,
     logit_quantization_step,
+    logit_tolerance_fields,
     measured_logit_tolerance,
     quantize_input,
 )
@@ -49,3 +51,10 @@ def test_float_output_without_int8_producer_falls_back_to_the_measured_delta():
     assert logit_quantization_step(output, [output], [{"op_name": "SOFTMAX", "inputs": [1], "outputs": [9]}]) is None
     tolerance = measured_logit_tolerance(np.array([[1.0, 2.0]]), np.array([[1.25, 1.5]]))
     assert (tolerance.key, tolerance.value) == (LOGIT_PARITY_MAX_DELTA_KEY, 0.5)
+
+
+def test_expected_json_always_has_a_top_level_logit_step():
+    step = logit_tolerance_fields(LogitTolerance(LOGIT_STEP_KEY, 0.0625, "scale"))
+    assert step == {"logitStep": 0.0625, "logitToleranceSource": "scale"}
+    measured = logit_tolerance_fields(LogitTolerance(LOGIT_PARITY_MAX_DELTA_KEY, 0.4, "measured"))
+    assert measured == {"logitStep": 0.4, "logitParityMaxDelta": 0.4, "logitToleranceSource": "measured"}

@@ -25,6 +25,7 @@ from sorghum_model.manifest import ImageRecord, license_summary, sha256_of_file
 from sorghum_model.metadata import InputQuantization, build_metadata, model_file_names, write_metadata
 from sorghum_model.quantization import (
     LogitTolerance,
+    logit_tolerance_fields,
     logit_quantization_step,
     measured_logit_tolerance,
     quantize_input,
@@ -231,16 +232,24 @@ def _evaluate(logits, labels, temperature, threshold, sorghum_index, settings: E
     calibrated = softmax(logits, temperature)
     passed = calibrated[:, sorghum_index] >= threshold
     is_sorghum = labels == sorghum_index
+    predicted = calibrated.argmax(axis=1)
     per_class_accuracy = {}
+    per_class_precision = {}
     for index, name in enumerate(SPECIES_CLASS_NAMES):
         in_class = labels == index
         if in_class.any():
-            per_class_accuracy[name] = float((calibrated[in_class].argmax(axis=1) == index).mean())
+            # Recall: share of this class's photos named correctly.
+            per_class_accuracy[name] = float((predicted[in_class] == index).mean())
+        predicted_as_class = predicted == index
+        if predicted_as_class.any():
+            per_class_precision[name] = float((labels[predicted_as_class] == index).mean())
     return {
         "split": Split.TEST.value,
         "photos": int(len(labels)),
         "accuracy": float((calibrated.argmax(axis=1) == labels).mean()),
         "perClassAccuracy": per_class_accuracy,
+        "perClassRecall": per_class_accuracy,
+        "perClassPrecision": per_class_precision,
         "eceBins": settings.ece_bins,
         "eceBeforeTemperature": expected_calibration_error(softmax(logits), labels, settings.ece_bins),
         "eceAfterTemperature": expected_calibration_error(calibrated, labels, settings.ece_bins),
@@ -260,7 +269,8 @@ def _write_fixtures(
     Photos are taken round-robin over classes so every class is covered. They are stored at
     input size, so the parity test checks inference and not the resize. The top-level
     `logitStep` (or, without an int8 logit tensor, `logitParityMaxDelta`) tells the parity
-    tests how far a phone's logits may differ from these; `logitToleranceSource` says which.
+    tests how far a phone's logits may differ from these. `logitStep` is always written (the
+    measured delta when there is no step); `logitToleranceSource` says which it is.
     """
     fixtures_dir.mkdir(parents=True, exist_ok=True)
     chosen = _round_robin_by_class(list(range(len(test))), test, count)
@@ -283,8 +293,7 @@ def _write_fixtures(
     document = {
         "modelVersion": version,
         "head": "species",
-        logit_tolerance.key: logit_tolerance.value,
-        "logitToleranceSource": logit_tolerance.source,
+        **logit_tolerance_fields(logit_tolerance),
         "fixtures": expectations,
     }
     (fixtures_dir / FIXTURE_EXPECTATIONS_FILE).write_text(

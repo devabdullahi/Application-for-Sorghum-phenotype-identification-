@@ -235,7 +235,9 @@ uv run sorghum-model export --run-dir runs/species-v1 --version 1 \
   `input.quantization` in the JSON. MobileNetV3's own normalization is inside the model.
 - **Fixtures:** `expected.json` has a top-level `logitStep`, the quantization step of the
   species logits (scale of the int8 tensor feeding the final DEQUANTIZE, or of an int8
-  output). If the model has no int8 logit tensor it has `logitParityMaxDelta` instead, the
+  output). It is always present, because the iOS parity test checks each logit within
+  2 x logitStep. If the model has no int8 logit tensor, `logitStep` holds (and
+  `logitParityMaxDelta` repeats) the
   largest float-vs-INT8 logit difference on the test split. `logitToleranceSource` says which.
 - **Output:** one float logits vector per head. Species logits follow the class order in
   `heads.species.classes`.
