@@ -122,3 +122,31 @@ def choose_sorghum_threshold(
             f"{min_predictions} predictions; more or cleaner data is needed"
         )
     return best
+
+
+def most_precise_sorghum_threshold(
+    sorghum_probabilities: np.ndarray, is_sorghum: np.ndarray, min_predictions: int
+) -> SorghumThreshold:
+    """The threshold with the highest precision among those passing `min_predictions` photos.
+
+    Only for diagnostic exports below the ship bar, when `choose_sorghum_threshold` finds none
+    that reaches the target: the gate is then as strict as the data allows, and the miss is
+    recorded. Ties go to the lowest threshold (highest recall). Raises ValueError when no
+    threshold passes enough photos.
+    """
+    positives = int(is_sorghum.sum())
+    if positives == 0:
+        raise ValueError("validation split has no sorghum photos")
+    best: SorghumThreshold | None = None
+    for candidate in np.unique(sorghum_probabilities):
+        passed = sorghum_probabilities >= candidate
+        predicted = int(passed.sum())
+        if predicted < min_predictions:
+            continue
+        true_positives = int((passed & is_sorghum).sum())
+        precision = true_positives / predicted
+        if best is None or precision > best.precision:
+            best = SorghumThreshold(float(candidate), precision, true_positives / positives, predicted)
+    if best is None:
+        raise ValueError(f"no threshold passes at least {min_predictions} validation photos")
+    return best

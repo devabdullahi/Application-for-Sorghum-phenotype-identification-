@@ -63,3 +63,16 @@ def test_threshold_needs_enough_predictions():
     is_sorghum = np.array([True, False])
     with pytest.raises(ValueError, match="no threshold"):
         choose_sorghum_threshold(probabilities, is_sorghum, 0.99, min_predictions=2)
+
+
+def test_most_precise_threshold_when_the_target_is_out_of_reach():
+    from sorghum_model.calibration import most_precise_sorghum_threshold
+
+    probabilities = np.array([0.9, 0.8, 0.7, 0.6])
+    is_sorghum = np.array([True, False, True, False])
+    chosen = most_precise_sorghum_threshold(probabilities, is_sorghum, min_predictions=1)
+    assert (chosen.threshold, chosen.precision) == (0.9, 1.0)
+    chosen = most_precise_sorghum_threshold(probabilities, is_sorghum, min_predictions=3)
+    assert chosen.threshold == 0.7 and chosen.precision == pytest.approx(2 / 3)
+    with pytest.raises(ValueError, match="no threshold passes"):
+        most_precise_sorghum_threshold(probabilities, is_sorghum, min_predictions=5)

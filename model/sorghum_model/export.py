@@ -18,6 +18,7 @@ from sorghum_model.calibration import (
     choose_sorghum_threshold,
     expected_calibration_error,
     fit_temperature,
+    most_precise_sorghum_threshold,
     softmax,
 )
 from sorghum_model.manifest import ImageRecord, license_summary, sha256_of_file
@@ -74,12 +75,23 @@ def export_model(
 
     temperature = fit_temperature(int8_validation_logits, validation_labels)
     sorghum_index = SPECIES_CLASS_NAMES.index(_sorghum_class_name())
-    threshold = choose_sorghum_threshold(
-        softmax(int8_validation_logits, temperature)[:, sorghum_index],
-        validation_labels == sorghum_index,
-        settings.sorghum_precision_target,
-        settings.min_threshold_predictions,
-    )
+    validation_sorghum = softmax(int8_validation_logits, temperature)[:, sorghum_index]
+    is_validation_sorghum = validation_labels == sorghum_index
+    threshold_problems = []
+    try:
+        threshold = choose_sorghum_threshold(
+            validation_sorghum,
+            is_validation_sorghum,
+            settings.sorghum_precision_target,
+            settings.min_threshold_predictions,
+        )
+    except ValueError as error:
+        # Missing the precision target is a ship-bar miss like the others: refused below
+        # unless --allow-below-bar, which then uses the strictest threshold the data allows.
+        threshold_problems.append(str(error))
+        threshold = most_precise_sorghum_threshold(
+            validation_sorghum, is_validation_sorghum, settings.min_threshold_predictions
+        )
 
     evaluation = _evaluate(
         int8_test_logits, test_labels, temperature, threshold.threshold, sorghum_index, settings
@@ -89,7 +101,7 @@ def export_model(
     }
     parity = _quantization_parity(float_test_logits, int8_test_logits, test_labels)
     # Checked before anything is written, so a model below the bar never reaches out_dir.
-    problems = ship_bar_problems(
+    problems = threshold_problems + ship_bar_problems(
         evaluation["testSorghumDecisionAccuracy"],
         parity["floatAccuracy"],
         parity["int8Accuracy"],
@@ -147,7 +159,13 @@ class _TfliteRunner:
     """Runs the INT8 model the way the phones do: uint8 pixels in, float logits out."""
 
     def __init__(self, model_bytes: bytes) -> None:
-        self._interpreter = tf.lite.Interpreter(model_content=model_bytes)
+        # The reference kernels, without the XNNPACK delegate: on TF 2.20 XNNPACK fails to
+        # prepare this full-integer MobileNetV3 ("Node number 118 ... failed to prepare"), and
+        # the expected outputs must not depend on a delegate's numerics anyway.
+        self._interpreter = tf.lite.Interpreter(
+            model_content=model_bytes,
+            experimental_op_resolver_type=tf.lite.experimental.OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES,
+        )
         self._interpreter.allocate_tensors()
         self._input = self._interpreter.get_input_details()[0]
         self._output = self._interpreter.get_output_details()[0]
