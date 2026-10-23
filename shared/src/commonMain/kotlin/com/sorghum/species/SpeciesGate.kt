@@ -51,6 +51,15 @@ enum class SpeciesUnavailableReason {
 /** The outcome of the species check on one photo. */
 sealed interface SpeciesCheck {
     /**
+     * True if this photo may go on to cultivar matching (ADR-0006, ADR-0009). Only a confirmed
+     * sorghum continues, plus an unchecked photo in measured-only mode (ARCHITECTURE.md
+     * section 4.3). Unsure and no-plant mean retake and not-sorghum means stop, so none of
+     * them is ever matched. The session and both apps read this instead of deciding themselves.
+     */
+    val allowsCultivarMatching: Boolean
+        get() = this is Sorghum || this is Unavailable
+
+    /**
      * The photo was not checked for sorghum, for [reason]. The app runs in measured-only mode
      * and the UI must say the species was not checked (ARCHITECTURE.md section 4.3). This is
      * not a verdict: it never means "not sorghum" or "retake".

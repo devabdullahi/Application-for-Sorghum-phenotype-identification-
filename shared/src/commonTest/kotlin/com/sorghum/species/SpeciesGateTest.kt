@@ -5,6 +5,7 @@ import com.sorghum.imaging.uniformImage
 import kotlin.math.ln
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** Class order in [DEFAULT_CLASSES]: sorghum, johnson grass, maize, other plant, no plant. */
@@ -164,6 +165,15 @@ class SpeciesGateTest {
         val gate = SpeciesGate(secondOutput, { listOf(floatArrayOf(0f), floatArrayOf(5f, 0f, 0f, 0f, 0f)) }, settings)
 
         assertTrue(gate.check(anyPhoto) is SpeciesCheck.Sorghum)
+    }
+
+    @Test
+    fun `only sorghum and an unchecked photo go on to cultivar matching`() {
+        assertTrue(SpeciesCheck.Sorghum(0.9f).allowsCultivarMatching)
+        assertTrue(SpeciesCheck.Unavailable(SpeciesUnavailableReason.NO_MODEL).allowsCultivarMatching)
+        assertFalse(SpeciesCheck.Unsure(0.5f).allowsCultivarMatching)
+        assertFalse(SpeciesCheck.NoPlant.allowsCultivarMatching)
+        assertFalse(SpeciesCheck.NotSorghum(lookAlikeClassId = "maize", sorghumProbability = 0.1f).allowsCultivarMatching)
     }
 
     private val anyPhoto = uniformImage(10, 10, Rgb(0, 0, 0))

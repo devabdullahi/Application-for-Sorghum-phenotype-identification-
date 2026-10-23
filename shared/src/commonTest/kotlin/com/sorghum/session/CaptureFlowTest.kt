@@ -134,6 +134,25 @@ class CaptureFlowTest {
     }
 
     @Test
+    fun `an unsure sample is never matched and leads to a retake`() {
+        val metadata = parseModelMetadata(metadataJson(temperature = 1f, sorghumThreshold = 0.8f))
+        // P(sorghum) = 0.5: below the sorghum threshold, and too likely sorghum to say "not sorghum".
+        val gate = SpeciesGate(metadata, ImageModel { listOf(floatArrayOf(0f, -100f, 0f, -100f, -100f)) })
+        val flow = CaptureFlow(gate)
+        flow.startCapture()
+
+        val species = flow.checkSpecies(uniformImage(8, 8, Rgb(60, 140, 50)))
+        // As the apps do once the quality check has passed the photo.
+        flow.onPhotoChecked(rejection = null, species = species)
+
+        assertTrue(species is SpeciesCheck.Unsure)
+        val accepted = flow.state as CaptureState.PhotoAccepted
+        assertFalse(accepted.species.allowsCultivarMatching)
+        flow.retake()
+        assertEquals(CaptureState.Guiding(guidance = null), flow.state)
+    }
+
+    @Test
     fun `a model that fails at run time leaves the photo unchecked`() {
         val metadata = parseModelMetadata(metadataJson())
         // Returns no outputs, as the iOS runner does after an interpreter error.
