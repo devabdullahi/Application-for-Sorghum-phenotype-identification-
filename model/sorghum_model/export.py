@@ -22,7 +22,14 @@ from sorghum_model.calibration import (
 )
 from sorghum_model.manifest import ImageRecord, license_summary, sha256_of_file
 from sorghum_model.metadata import InputQuantization, build_metadata, model_file_names, write_metadata
+from sorghum_model.quantization import (
+    LogitTolerance,
+    logit_quantization_step,
+    measured_logit_tolerance,
+    quantize_input,
+)
 from sorghum_model.settings import MODEL_INPUT_SIZE_PX, ExportSettings
+from sorghum_model.ship_bar import enforce_ship_bar, ship_bar_problems, sorghum_decision_accuracy
 from sorghum_model.species_classes import SPECIES_CLASS_NAMES, SpeciesGroup, species_class
 from sorghum_model.splits import Split, count_per_class_and_split
 from sorghum_model.train import KERAS_MODEL_FILE, SAVED_MODEL_DIR, SHUFFLE_SEED, class_indices, load_images
@@ -40,8 +47,13 @@ def export_model(
     fixtures_dir: Path,
     settings: ExportSettings,
     provenance: dict,
+    allow_below_bar: bool = False,
 ) -> Path:
-    """Writes the model, its metadata and the fixtures; returns the metadata path."""
+    """Writes the model, its metadata and the fixtures; returns the metadata path.
+
+    Raises BelowShipBarError, writing nothing, when the model misses ExportSettings' ship
+    bar, unless `allow_below_bar` (diagnostic exports only; recorded as `belowBar`).
+    """
     train = [r for r in records if splits[r.sha256] is Split.TRAIN]
     validation = [r for r in records if splits[r.sha256] is Split.VALIDATION]
     test = [r for r in records if splits[r.sha256] is Split.TEST]
@@ -69,6 +81,22 @@ def export_model(
         settings.min_threshold_predictions,
     )
 
+    evaluation = _evaluate(
+        int8_test_logits, test_labels, temperature, threshold.threshold, sorghum_index, settings
+    ) | {
+        "validationSorghumPrecision": threshold.precision,
+        "validationSorghumRecall": threshold.recall,
+    }
+    parity = _quantization_parity(float_test_logits, int8_test_logits, test_labels)
+    # Checked before anything is written, so a model below the bar never reaches out_dir.
+    problems = ship_bar_problems(
+        evaluation["testSorghumDecisionAccuracy"],
+        parity["floatAccuracy"],
+        parity["int8Accuracy"],
+        settings,
+    )
+    below_bar = enforce_ship_bar(problems, allow_below_bar)
+
     model_file, metadata_file = model_file_names(version)
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / model_file).write_bytes(model_bytes)
@@ -81,14 +109,8 @@ def export_model(
         species_output_index=0,
         temperature=temperature,
         sorghum_threshold=threshold.threshold,
-        evaluation=_evaluate(
-            int8_test_logits, test_labels, temperature, threshold.threshold, sorghum_index, settings
-        )
-        | {
-            "validationSorghumPrecision": threshold.precision,
-            "validationSorghumRecall": threshold.recall,
-        },
-        quantization_parity=_quantization_parity(float_test_logits, int8_test_logits, test_labels),
+        evaluation=evaluation,
+        quantization_parity=parity,
         training_data=provenance
         | {
             "photosPerClassAndSplit": {
@@ -103,9 +125,21 @@ def export_model(
         # Additive keys only: `shared/` does not read trainingData. "licenses" and
         # "nonCommercial" tell a reader whether the model may be used commercially.
         | license_summary(records),
+        ship_bar={
+            "minSorghumDecisionAccuracy": settings.min_sorghum_accuracy,
+            "maxQuantizationAccuracyDelta": settings.max_quantization_accuracy_delta,
+            "problems": problems,
+        },
+        below_bar=below_bar,
     )
     write_metadata(metadata, output_dir / metadata_file)
-    _write_fixtures(test, test_images, runner, temperature, version, fixtures_dir, settings.fixture_images)
+    logit_tolerance = runner.logit_step() or measured_logit_tolerance(
+        float_test_logits, int8_test_logits
+    )
+    _write_fixtures(
+        test, test_images, runner, temperature, version, fixtures_dir, settings.fixture_images,
+        logit_tolerance,
+    )
     return output_dir / metadata_file
 
 
@@ -130,10 +164,16 @@ class _TfliteRunner:
         return np.stack(rows)
 
     def _quantize(self, image: np.ndarray) -> np.ndarray:
-        # Same formula `shared/` applies from the metadata: q = v / scale + zeroPoint.
-        quantization = self.input_quantization
-        quantized = np.round(image.astype(np.float32) / quantization.scale + quantization.zero_point)
-        return np.clip(quantized, 0, 255).astype(np.uint8)
+        # Same formula and rounding `shared/` applies from the metadata (see quantize_input).
+        return quantize_input(image, self.input_quantization.scale, self.input_quantization.zero_point)
+
+    def logit_step(self) -> LogitTolerance | None:
+        """The quantization step of the species logits, read from the model's tensors."""
+        return logit_quantization_step(
+            self._output,
+            self._interpreter.get_tensor_details(),
+            self._interpreter._get_ops_details(),  # no public API lists the ops
+        )
 
 
 def _convert_to_int8(saved_model_dir: Path, representative_images: np.ndarray) -> bytes:
@@ -186,16 +226,23 @@ def _evaluate(logits, labels, temperature, threshold, sorghum_index, settings: E
         "eceBins": settings.ece_bins,
         "eceBeforeTemperature": expected_calibration_error(softmax(logits), labels, settings.ece_bins),
         "eceAfterTemperature": expected_calibration_error(calibrated, labels, settings.ece_bins),
+        "testSorghumDecisionAccuracy": sorghum_decision_accuracy(
+            calibrated[:, sorghum_index], is_sorghum, threshold
+        ),
         "testSorghumPrecision": float((passed & is_sorghum).sum() / max(passed.sum(), 1)),
         "testSorghumRecall": float((passed & is_sorghum).sum() / max(is_sorghum.sum(), 1)),
     }
 
 
-def _write_fixtures(test, test_images, runner, temperature, version, fixtures_dir, count) -> None:
+def _write_fixtures(
+    test, test_images, runner, temperature, version, fixtures_dir, count, logit_tolerance
+) -> None:
     """Writes model-input PNGs and the INT8 outputs both phone runtimes must reproduce (R7).
 
     Photos are taken round-robin over classes so every class is covered. They are stored at
-    input size, so the parity test checks inference and not the resize.
+    input size, so the parity test checks inference and not the resize. The top-level
+    `logitStep` (or, without an int8 logit tensor, `logitParityMaxDelta`) tells the parity
+    tests how far a phone's logits may differ from these; `logitToleranceSource` says which.
     """
     fixtures_dir.mkdir(parents=True, exist_ok=True)
     chosen = _round_robin_by_class(list(range(len(test))), test, count)
@@ -215,7 +262,13 @@ def _write_fixtures(test, test_images, runner, temperature, version, fixtures_di
                 "attribution": record.attribution,
             }
         )
-    document = {"modelVersion": version, "head": "species", "fixtures": expectations}
+    document = {
+        "modelVersion": version,
+        "head": "species",
+        logit_tolerance.key: logit_tolerance.value,
+        "logitToleranceSource": logit_tolerance.source,
+        "fixtures": expectations,
+    }
     (fixtures_dir / FIXTURE_EXPECTATIONS_FILE).write_text(
         json.dumps(document, indent=2) + "\n", encoding="utf-8"
     )

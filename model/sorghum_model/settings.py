@@ -23,11 +23,16 @@ class SplitSettings:
         test_fraction: share of groups held out for the final numbers only. Same reasoning.
         salt: names the split scheme. Changing it reshuffles all groups, so it changes only
             together with a new model version.
+        near_duplicate_max_distance: two photos whose 64-bit dHashes differ in at most this
+            many bits are treated as the same picture (`near_duplicates.py`). Resizing and
+            JPEG recompression flip a few bits; different photos of one plant usually differ
+            in 10 or more. Initial guess, tune by looking at the pairs it finds.
     """
 
     validation_fraction: float = 0.15
     test_fraction: float = 0.15
     salt: str = "species-v1"
+    near_duplicate_max_distance: int = 4
 
     def __post_init__(self) -> None:
         if not 0 < self.validation_fraction < 0.5:
@@ -36,6 +41,8 @@ class SplitSettings:
             raise ValueError("test_fraction must be in (0, 0.5)")
         if not self.salt:
             raise ValueError("salt must not be empty")
+        if not 0 <= self.near_duplicate_max_distance <= 16:
+            raise ValueError("near_duplicate_max_distance must be in [0, 16]")
 
 
 @dataclass(frozen=True)
@@ -97,6 +104,14 @@ class ExportSettings:
             this is rejected as noise.
         fixture_images: test-split photos exported with expected outputs for the parity tests
             on Android and iOS.
+        min_sorghum_accuracy: ship bar. Held-out (test split) accuracy of the sorghum-vs-not
+            decision the app makes with the exported threshold. The gate is the first step of
+            every identification; below 90% one sample in ten is wrongly stopped or wrongly
+            passed on, which the team agreed is too many to ship (review of PR #11).
+        max_quantization_accuracy_delta: ship bar. Largest allowed |float - INT8| top-1
+            accuracy difference on the test split. The phones run the INT8 model, so a larger
+            loss means the numbers measured on the float model do not describe the app.
+            0.02 is the team's agreed bar (review of PR #11).
     """
 
     representative_images: int = 300
@@ -104,6 +119,8 @@ class ExportSettings:
     sorghum_precision_target: float = 0.97
     min_threshold_predictions: int = 20
     fixture_images: int = 12
+    min_sorghum_accuracy: float = 0.90
+    max_quantization_accuracy_delta: float = 0.02
 
     def __post_init__(self) -> None:
         if self.representative_images < 1:
@@ -114,6 +131,10 @@ class ExportSettings:
             raise ValueError("sorghum_precision_target must be in (0.5, 1)")
         if self.min_threshold_predictions < 1 or self.fixture_images < 1:
             raise ValueError("min_threshold_predictions and fixture_images must be at least 1")
+        if not 0.5 < self.min_sorghum_accuracy <= 1:
+            raise ValueError("min_sorghum_accuracy must be in (0.5, 1]")
+        if not 0 <= self.max_quantization_accuracy_delta < 0.5:
+            raise ValueError("max_quantization_accuracy_delta must be in [0, 0.5)")
 
 
 @dataclass(frozen=True)
@@ -141,3 +162,54 @@ class PublicDatasetSettings:
             raise ValueError("images_per_sequence_group must be at least 1")
         if self.grain_images_per_class < 1:
             raise ValueError("grain_images_per_class must be at least 1")
+
+
+@dataclass(frozen=True)
+class LabelReviewSettings:
+    """When BioCLIP 2 confirms an unreviewed Commons or Flickr label (`label_review.py`).
+
+    ASSUMPTION - confirm: a zero-shot BioCLIP 2 verdict counts as verification for these rows.
+
+    Attributes:
+        min_class_probability: a plant row is verified when BioCLIP's most probable class is
+            the row's class and that class has at least this probability (summed over the
+            class's prompts). Above 0.5 the class beats all others together. Initial guess.
+        max_plant_probability: a `no_plant` row is verified when the summed probability of
+            every plant class is below this, i.e. BioCLIP sees soil, a board or a hand rather
+            than a plant. Low because a plant in a no_plant photo teaches the gate to reject
+            real samples. Initial guess.
+        batch_size: images per forward pass; 16 fits BioCLIP 2's ViT-L/14 in 8 GB.
+        checkpoint_every_rows: the manifest is saved this often, so an interrupted review
+            keeps its verdicts.
+    """
+
+    min_class_probability: float = 0.5
+    max_plant_probability: float = 0.2
+    batch_size: int = 16
+    checkpoint_every_rows: int = 200
+
+    def __post_init__(self) -> None:
+        if not 0 < self.min_class_probability < 1:
+            raise ValueError("min_class_probability must be in (0, 1)")
+        if not 0 < self.max_plant_probability < 1:
+            raise ValueError("max_plant_probability must be in (0, 1)")
+        if self.batch_size < 1 or self.checkpoint_every_rows < 1:
+            raise ValueError("batch_size and checkpoint_every_rows must be at least 1")
+
+
+@dataclass(frozen=True)
+class DownloadSettings:
+    """How download commands save progress.
+
+    Attributes:
+        checkpoint_every_photos: a class's manifest rows are saved this often during a
+            download, so a crash or kill loses at most this many rows (the files stay on disk
+            and are not fetched again). Writing a manifest of tens of thousands of rows takes
+            well under a second, so 200 costs little against ~200 s of downloading.
+    """
+
+    checkpoint_every_photos: int = 200
+
+    def __post_init__(self) -> None:
+        if self.checkpoint_every_photos < 1:
+            raise ValueError("checkpoint_every_photos must be at least 1")

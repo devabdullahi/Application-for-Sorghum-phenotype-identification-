@@ -24,6 +24,8 @@ def _metadata(**overrides):
         "evaluation": {},
         "quantization_parity": {},
         "training_data": {},
+        "ship_bar": {"problems": []},
+        "below_bar": False,
     }
     arguments.update(overrides)
     return build_metadata(**arguments)

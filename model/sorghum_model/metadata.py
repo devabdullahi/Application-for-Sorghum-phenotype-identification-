@@ -47,8 +47,14 @@ def build_metadata(
     evaluation: dict,
     quantization_parity: dict,
     training_data: dict,
+    ship_bar: dict,
+    below_bar: bool,
 ) -> dict:
-    """Assembles the metadata document and validates it before returning."""
+    """Assembles the metadata document and validates it before returning.
+
+    `below_bar` is true only for a diagnostic export made with `--allow-below-bar`; such a
+    model must not ship. `ship_bar` holds the bar's values and any missed checks.
+    """
     model_file, _ = model_file_names(version)
     metadata = {
         "schemaVersion": METADATA_SCHEMA_VERSION,
@@ -83,6 +89,8 @@ def build_metadata(
         # Learned trait heads are added here in later versions (ADR-0004); none exist yet.
         "traits": [],
         "trainingData": training_data,
+        "belowBar": below_bar,
+        "shipBar": ship_bar,
     }
     validate_metadata(metadata)
     return metadata
