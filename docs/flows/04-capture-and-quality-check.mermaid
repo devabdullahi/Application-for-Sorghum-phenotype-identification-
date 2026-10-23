@@ -1,0 +1,28 @@
+%% Status: built (phase 1). CaptureViewModel.captureAndCheckPhoto + shared checkPhotoQuality.
+sequenceDiagram
+    participant S as CaptureScreen
+    participant VM as CaptureViewModel
+    participant F as shared CaptureFlow
+    participant C as CameraSession (CameraX)
+    participant Q as shared checkPhotoQuality
+
+    S->>VM: READY reached
+    VM->>F: startCapture()
+    F-->>VM: true, state = CheckingPhoto
+    VM->>C: takePhoto() (CAPTURE_MODE_MAXIMIZE_QUALITY)
+    alt capture error
+        C-->>VM: ImageCaptureException
+        VM->>F: onCaptureFailed()
+    else photo taken
+        C-->>VM: ImageProxy (full resolution)
+        Note over VM: Dispatchers.Default (off main)
+        VM->>VM: cropToTargetFrame (full res)<br/>scaledToLongSide(640)<br/>toPixelImage()
+        VM->>F: checkPhoto(PixelImage)
+        F->>Q: cheapest checks first
+        Q-->>F: null or NO_SAMPLE / TOO_DARK / GLARE / BLURRY
+        VM->>F: onPhotoChecked(rejection)
+    end
+    F-->>VM: PhotoAccepted / PhotoRejected(reason) / CaptureFailed
+    VM-->>S: uiState
+    S->>VM: retake()
+    VM->>F: retake(): back to Guiding

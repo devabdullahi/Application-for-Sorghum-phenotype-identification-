@@ -1,5 +1,11 @@
 # Sorghum Variety Identification
 
+## Start here
+
+- **[docs/KEEP_UP.md](docs/KEEP_UP.md)**: current status, branches in flight, what is next and open questions. Read this first.
+- [docs/flows/](docs/flows/README.md): one Mermaid diagram per interaction flow (live guidance, capture, species gate, training, failures).
+- [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md): target design. Decisions are in [docs/architecture/adr/](docs/architecture/adr/).
+
 ## Proposed On-Device Identification
 
 > Superseded in part: the current target design is in [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md). It first checks the sample is sorghum, then identifies the cultivar from visible traits (ADR-0001, ADR-0006), on iPhone and Android.

@@ -1,0 +1,15 @@
+%% Status: built. shared/session/CaptureFlow.kt (CaptureState). The Android UiState mirrors it 1:1.
+stateDiagram-v2
+    [*] --> Guiding
+    Guiding --> Guiding: tilt / coverage update
+    Guiding --> CheckingPhoto: startCapture() (READY)
+    CheckingPhoto --> PhotoAccepted: quality check passed
+    CheckingPhoto --> PhotoRejected: quality check failed (reason)
+    CheckingPhoto --> CaptureFailed: camera error
+    PhotoAccepted --> Guiding: retake()
+    PhotoRejected --> Guiding: retake()
+    CaptureFailed --> Guiding: retake()
+    Guiding --> CameraUnavailable: camera cannot bind
+    Guiding --> LevelSensorUnavailable: no gravity sensor
+    CameraUnavailable --> [*]
+    LevelSensorUnavailable --> [*]

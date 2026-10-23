@@ -1,0 +1,19 @@
+%% Status: target behaviour fixed by ARCHITECTURE.md section 4.3. Phase 1 rows are built.
+flowchart TD
+    START["App start"] --> TBL{"Cultivar tables valid?"}
+    TBL -- no --> ERR["Startup error, clear message<br/>(never reason on partial tables)"]
+    TBL -- yes --> MOD{"Model file loads?"}
+    MOD -- no --> MO["Measured-traits-only mode,<br/>announced in the UI"]
+    MOD -- yes --> FULL["Full mode"]
+    MO & FULL --> SENS{"Camera + gravity sensor available?"}
+    SENS -- "no camera" --> CU["CameraUnavailable (built)"]
+    SENS -- "no sensor" --> LU["LevelSensorUnavailable (built)"]
+    SENS -- yes --> PHOTO["Photo taken"]
+    PHOTO --> QC{"Quality check (built)"}
+    QC -- "NO_SAMPLE / TOO_DARK / GLARE / BLURRY" --> RT["Specific message, retake"]
+    QC -- ok --> SG{"Species gate"}
+    SG -- "not sorghum" --> NS["Not sorghum (+ look-alike name)"]
+    SG -- unsure --> UNS["Unsure, retake"]
+    SG -- sorghum --> CC{"Colour card found?"}
+    CC -- no --> NOC["Reject: colour card not visible"]
+    CC -- yes --> GO["Traits + reasoning"]

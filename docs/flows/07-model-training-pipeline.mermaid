@@ -1,0 +1,19 @@
+%% Status: code written on feature/model-species-head; train/export not run yet (see model/README.md).
+flowchart LR
+    subgraph Sources["Photo sources (CC0 / CC BY / CC BY-SA only)"]
+        INAT["iNaturalist<br/>research grade"]
+        OPEN["Open datasets<br/>SorghumWeed, Disease, GrainSet, UQ"]
+        TEAM["Our own photos<br/>millets, sugarcane, no_plant"]
+    end
+
+    INAT -- "inat-download" --> MAN["manifests/*.csv<br/>(committed: licence, attribution,<br/>label provenance, sha256)"]
+    OPEN -- "import-folder" --> MAN
+    TEAM -- "import-folder" --> MAN
+    MAN -- "split (by group, never by image)" --> SPL["splits/species-v1.csv<br/>(committed)"]
+    SPL -- "train" --> KER["Keras MobileNetV3-Small<br/>frozen head, then fine-tune"]
+    KER -- "export" --> Q["INT8 TFLite<br/>uint8 in, float logits out"]
+    Q --> PAR["float vs INT8 parity<br/>on test split"]
+    Q --> CAL["temperature + sorghum threshold<br/>on validation (INT8 outputs)"]
+    PAR & CAL --> OUT["traits-vN.tflite<br/>traits-vN.json"]
+    Q --> FIX["parity fixtures<br/>shared/src/commonTest/resources/species"]
+    OUT --> APP["bundled in Android + iOS apps"]
