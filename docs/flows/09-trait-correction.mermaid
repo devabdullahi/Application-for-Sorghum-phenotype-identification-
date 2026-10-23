@@ -1,0 +1,14 @@
+%% Status: target. A correction re-runs reasoning only; no image work, no patching the old posterior.
+sequenceDiagram
+    actor U as User
+    participant UI as Android UI
+    participant S as shared session
+    participant R as shared reasoning
+
+    S-->>UI: Result(top matches, reasons)
+    U->>UI: "Glume colour is actually red"
+    UI->>S: correctTrait(traitId, state)
+    S->>S: replace that TraitEstimate with a<br/>near-certain one (noise floor still applies)
+    S->>R: recompute posterior from all stored estimates
+    R-->>S: new ranking + explanation
+    S-->>UI: updated Result (may run on main thread)

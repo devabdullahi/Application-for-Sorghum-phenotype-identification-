@@ -1,0 +1,16 @@
+%% Status: built. shared/capture/guidance/GuidanceEvaluator.kt + SteadyHoldTimer.kt.
+%% One instruction at a time, fixed priority: level, then sample, then hold.
+flowchart TD
+    IN["DeviceTilt + SampleCoverage"] --> LEVEL{"|pitch| or |roll|<br/>> maxTiltDegrees (5)?"}
+    LEVEL -- yes --> AXIS{"|pitch| >= |roll|?"}
+    AXIS -- yes --> PITCH["TILT_TOP_DOWN / TILT_BOTTOM_DOWN"]
+    AXIS -- no --> ROLL["TILT_RIGHT_DOWN / TILT_LEFT_DOWN"]
+    LEVEL -- no --> GREEN{"greenFraction<br/>< minSampleFraction (0.02)?"}
+    GREEN -- yes --> NOS["NO_SAMPLE"]
+    GREEN -- no --> EDGE{"edgeGreenFraction<br/>> maxEdgeGreenFraction (0.05)?"}
+    EDGE -- yes --> CUT["SAMPLE_CUT_OFF"]
+    EDGE -- no --> HOLD["HOLD_STEADY"]
+    HOLD --> TIMER{"HOLD_STEADY for 800 ms<br/>without interruption?"}
+    TIMER -- yes --> READY["READY: UI triggers capture"]
+    TIMER -- no --> HOLD
+    PITCH & ROLL & NOS & CUT --> RESET["hold timer resets"]
