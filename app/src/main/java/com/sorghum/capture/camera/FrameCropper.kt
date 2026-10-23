@@ -5,10 +5,10 @@ import android.graphics.Matrix
 import android.graphics.Rect
 import androidx.camera.core.ImageProxy
 import androidx.core.graphics.scale
-import com.sorghum.capture.frame.PixelRect
 import com.sorghum.capture.frame.TargetFrame
 import com.sorghum.capture.frame.mapTargetToImagePixels
 import com.sorghum.capture.frame.uprightSize
+import com.sorghum.imaging.PixelRect
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt

@@ -1,5 +1,7 @@
 package com.sorghum.capture.frame
 
+import com.sorghum.imaging.NormalizedRect
+import com.sorghum.imaging.PixelRect
 import kotlin.test.assertEquals
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
