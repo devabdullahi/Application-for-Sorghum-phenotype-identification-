@@ -1,0 +1,6 @@
+# Datasets stay out of git; only manifests and checksums are committed (see README).
+data/
+runs/
+.venv/
+__pycache__/
+.pytest_cache/
