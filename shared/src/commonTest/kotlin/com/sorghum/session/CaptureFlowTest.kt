@@ -9,6 +9,7 @@ import com.sorghum.imaging.uniformImage
 import com.sorghum.species.ImageModel
 import com.sorghum.species.SpeciesCheck
 import com.sorghum.species.SpeciesGate
+import com.sorghum.species.SpeciesUnavailableReason
 import com.sorghum.species.metadataJson
 import com.sorghum.species.parseModelMetadata
 import kotlin.test.Test
@@ -83,7 +84,7 @@ class CaptureFlowTest {
 
         flow.startCapture()
         flow.onPhotoChecked(rejection = null)
-        assertEquals(CaptureState.PhotoAccepted(SpeciesCheck.Unavailable), flow.state)
+        assertEquals(CaptureState.PhotoAccepted(SpeciesCheck.Unavailable(SpeciesUnavailableReason.NO_MODEL)), flow.state)
 
         flow.retake()
         flow.startCapture()
@@ -119,7 +120,7 @@ class CaptureFlowTest {
         val flow = CaptureFlow()
 
         assertFalse(flow.isSpeciesCheckAvailable)
-        assertEquals(SpeciesCheck.Unavailable, flow.checkSpecies(uniformImage(4, 4, Rgb(60, 140, 50))))
+        assertEquals(SpeciesCheck.Unavailable(SpeciesUnavailableReason.NO_MODEL), flow.checkSpecies(uniformImage(4, 4, Rgb(60, 140, 50))))
     }
 
     @Test
@@ -139,6 +140,9 @@ class CaptureFlowTest {
         val broken = SpeciesGate(metadata, ImageModel { emptyList() })
         val flow = CaptureFlow(broken)
 
-        assertEquals(SpeciesCheck.Unavailable, flow.checkSpecies(uniformImage(8, 8, Rgb(60, 140, 50))))
+        assertEquals(
+            SpeciesCheck.Unavailable(SpeciesUnavailableReason.MISSING_SPECIES_OUTPUT),
+            flow.checkSpecies(uniformImage(8, 8, Rgb(60, 140, 50))),
+        )
     }
 }

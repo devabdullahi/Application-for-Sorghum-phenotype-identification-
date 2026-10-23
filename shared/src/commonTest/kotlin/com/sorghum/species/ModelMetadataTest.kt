@@ -3,6 +3,7 @@ package com.sorghum.species
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 /** Parses metadata in the exact shape `model/sorghum_model/metadata.py` writes. */
 class ModelMetadataTest {
@@ -74,10 +75,34 @@ class ModelMetadataTest {
     }
 
     @Test
+    fun `refuses metadata without a species head`() {
+        assertFailsWith<InvalidModelMetadataException> { parseModelMetadata(metadataJson(headId = "leafShape")) }
+    }
+
+    @Test
+    fun `refuses a negative species output index`() {
+        assertFailsWith<InvalidModelMetadataException> { parseModelMetadata(metadataJson(outputIndex = -1)) }
+    }
+
+    @Test
     fun `failed load gives a reason instead of a gate`() {
         val load = loadSpeciesGate("not json", model = { emptyList() })
 
         assertEquals(true, load is SpeciesGateLoad.Failed)
+    }
+
+    @Test
+    fun `metadata without a species head fails the load instead of crashing`() {
+        val load = loadSpeciesGate(metadataJson(headId = "leafShape"), model = { emptyList() })
+
+        assertTrue((load as SpeciesGateLoad.Failed).reason.contains("species"))
+    }
+
+    @Test
+    fun `metadata with a wrongly typed field fails the load instead of crashing`() {
+        val load = loadSpeciesGate(metadataJson().replace("\"widthPx\": 224", "\"widthPx\": \"wide\""), model = { emptyList() })
+
+        assertTrue(load is SpeciesGateLoad.Failed)
     }
 }
 
@@ -92,16 +117,18 @@ internal fun metadataJson(
     scale: Float = 1f,
     zeroPoint: Int = 0,
     extraSpeciesKeys: String = "",
+    headId: String = "species",
+    outputIndex: Int = 0,
 ): String = """
 {
   "backbone": "MobileNetV3-Small (ImageNet weights)",
   "createdOn": "2026-10-21",
   "heads": {
-    "species": {
+    "$headId": {
       $extraSpeciesKeys
       "classes": $classes,
       "output": "logits",
-      "outputIndex": 0,
+      "outputIndex": $outputIndex,
       "quantizationParity": {},
       "sorghumThreshold": $sorghumThreshold,
       "temperature": $temperature

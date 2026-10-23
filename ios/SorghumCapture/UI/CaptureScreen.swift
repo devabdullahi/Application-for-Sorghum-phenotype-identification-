@@ -165,7 +165,8 @@ struct CaptureScreen: View {
         case is SpeciesCheckUnsure:
             return ("Not sure it is sorghum", "Retake closer, in good light, or photograph another part of the plant.", .yellow)
         default:
-            return ("Photo accepted", "Species check not installed yet: this photo was only checked for quality.", .white)
+            // SpeciesCheckUnavailable: no model, or the model's output did not fit its metadata.
+            return ("Photo accepted", "Species not checked: this photo was only checked for quality.", .white)
         }
     }
 

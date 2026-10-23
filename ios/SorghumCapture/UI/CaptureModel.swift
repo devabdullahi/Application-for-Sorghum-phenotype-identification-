@@ -178,7 +178,8 @@ final class CaptureModel {
         case .unreadable:
             flow.onCaptureFailed()
         case let .rejected(reason):
-            flow.onPhotoChecked(rejection: reason, species: SpeciesCheckUnavailable.shared)
+            // The species is ignored for a rejected photo; Swift cannot use the Kotlin default.
+            flow.onPhotoChecked(rejection: reason, species: SpeciesCheckUnavailable(reason: .noModel))
         case let .accepted(displayImage, species):
             acceptedPhoto = displayImage
             flow.onPhotoChecked(rejection: nil, species: species)

@@ -16,6 +16,7 @@ import com.sorghum.capture.sample.measureSampleCoverage
 import com.sorghum.imaging.PixelImage
 import com.sorghum.species.SpeciesCheck
 import com.sorghum.species.SpeciesGate
+import com.sorghum.species.SpeciesUnavailableReason
 
 /** Everything the capture screen can show. Exactly one is active at a time. */
 sealed interface CaptureState {
@@ -122,24 +123,22 @@ class CaptureFlow(val settings: CaptureSettings, private val speciesGate: Specie
      * cropped to the target frame at the quality-check size; the gate makes the model input.
      * Call off the main thread, after [checkPhoto] accepted the photo.
      *
-     * A model that fails at run time (wrong output count or size) gives
-     * [SpeciesCheck.Unavailable]: the photo is reported as not checked, never guessed, and the
-     * failure does not crash the app through the Swift bridge.
+     * Without a model the result is [SpeciesCheck.Unavailable] with
+     * [SpeciesUnavailableReason.NO_MODEL]; a model that fails at run time gives
+     * [SpeciesCheck.Unavailable] with its reason. Either way the photo is reported as not
+     * checked, never guessed.
      */
-    fun checkSpecies(image: PixelImage): SpeciesCheck {
-        val gate = speciesGate ?: return SpeciesCheck.Unavailable
-        return try {
-            gate.check(image)
-        } catch (exception: IllegalStateException) {
-            SpeciesCheck.Unavailable
-        }
-    }
+    fun checkSpecies(image: PixelImage): SpeciesCheck =
+        speciesGate?.check(image) ?: SpeciesCheck.Unavailable(SpeciesUnavailableReason.NO_MODEL)
 
     /**
      * Records the result of [checkPhoto] and, for an accepted photo, of [checkSpecies].
      * [species] is ignored for a rejected photo.
      */
-    fun onPhotoChecked(rejection: RejectionReason?, species: SpeciesCheck = SpeciesCheck.Unavailable) {
+    fun onPhotoChecked(
+        rejection: RejectionReason?,
+        species: SpeciesCheck = SpeciesCheck.Unavailable(SpeciesUnavailableReason.NO_MODEL),
+    ) {
         state = if (rejection == null) CaptureState.PhotoAccepted(species) else CaptureState.PhotoRejected(rejection)
     }
 
