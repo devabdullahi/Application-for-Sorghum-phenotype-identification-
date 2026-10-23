@@ -49,6 +49,7 @@ def build_metadata(
     training_data: dict,
     ship_bar: dict,
     below_bar: bool,
+    backbone: str,
 ) -> dict:
     """Assembles the metadata document and validates it before returning.
 
@@ -61,7 +62,7 @@ def build_metadata(
         "modelVersion": version,
         "modelFile": model_file,
         "createdOn": created_on,
-        "backbone": "MobileNetV3-Small (ImageNet weights)",
+        "backbone": f"{backbone} (ImageNet weights)",
         "input": {
             "widthPx": input_size_px,
             "heightPx": input_size_px,

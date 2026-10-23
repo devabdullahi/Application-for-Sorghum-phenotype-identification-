@@ -1,4 +1,4 @@
-"""Trains the MobileNetV3-Small species head (ADR-0006). Needs the `train` extra (TensorFlow).
+"""Trains the MobileNetV3-Small species head (ADR-0006); the variant is TrainingSettings.backbone. Needs the `train` extra (TensorFlow).
 
 Two phases: first only the new head trains on a frozen ImageNet backbone, then the whole
 network fine-tunes at a lower rate. The checkpoint with the lowest validation loss is kept.
@@ -14,7 +14,7 @@ import tensorflow as tf
 
 from sorghum_model.manifest import ImageRecord
 from sorghum_model.preprocessing import load_model_input
-from sorghum_model.settings import MODEL_INPUT_SIZE_PX, TrainingSettings
+from sorghum_model.settings import MODEL_INPUT_SIZE_PX, Backbone, TrainingSettings
 from sorghum_model.species_classes import SPECIES_CLASS_NAMES
 from sorghum_model.splits import Split, count_per_class_and_split, find_undersized_classes
 
@@ -55,7 +55,7 @@ def train_species_model(
     train_data = _make_dataset(train_records, data_root, settings.batch_size, is_training=True)
     validation_data = _make_dataset(validation_records, data_root, settings.batch_size, is_training=False)
 
-    model, backbone = build_species_model(len(SPECIES_CLASS_NAMES), settings.dropout)
+    model, backbone = build_species_model(len(SPECIES_CLASS_NAMES), settings.dropout, settings.backbone)
     class_weight = _balanced_class_weights(train_records)
     checkpoint_path = run_dir / KERAS_MODEL_FILE
     checkpoint = keras.callbacks.ModelCheckpoint(
@@ -93,7 +93,9 @@ def train_species_model(
     return run_dir
 
 
-def build_species_model(class_count: int, dropout: float) -> tuple[keras.Model, keras.Model]:
+def build_species_model(
+    class_count: int, dropout: float, variant: Backbone
+) -> tuple[keras.Model, keras.Model]:
     """Returns (model, backbone). The model takes 0-255 float RGB and outputs species logits.
 
     `include_preprocessing=True` puts MobileNetV3's own rescaling inside the graph, so the
@@ -106,6 +108,7 @@ def build_species_model(class_count: int, dropout: float) -> tuple[keras.Model, 
         weights="imagenet",
         pooling="avg",
         include_preprocessing=True,
+        minimalistic=variant is Backbone.MOBILENET_V3_SMALL_MINIMALISTIC,
     )
     inputs = keras.Input(shape=(size, size, 3), name="image")
     # training=False keeps BatchNorm statistics frozen even while fine-tuning; updating them
