@@ -1,6 +1,12 @@
 # XcodeGen spec. Regenerate the Xcode project after adding or removing files, then install
 # the pods (TensorFlow Lite) and open the workspace, not the project:
 #   cd ios && xcodegen generate && pod install && open SorghumCapture.xcworkspace
+#
+# Species model: the only place for versioned model files is SorghumCapture/Resources/Models/.
+# Install an export from model/ with
+#   ios/scripts/install-species-model.sh <export-dir>
+# which checks that traits-vN.tflite and traits-vN.json share N, replaces the old version and
+# regenerates the project. The app loads the highest N it finds (BundledSpeciesModel).
 name: SorghumCapture
 options:
   bundleIdPrefix: com.sorghum
@@ -15,7 +21,17 @@ targets:
   SorghumCapture:
     type: application
     platform: iOS
-    sources: [SorghumCapture]
+    sources:
+      - path: SorghumCapture
+        # "._*" files are macOS metadata written on exFAT drives; they must never reach the bundle.
+        # Models are added below, so only versioned model files are bundled from that folder.
+        excludes: ["**/._*", "Resources/Models"]
+      - path: SorghumCapture/Resources/Models
+        buildPhase: resources
+        includes: ["traits-v*.tflite", "traits-v*.json"]
+        excludes: ["._*"]
+        # Missing until a model is installed; the app then runs without the species check.
+        optional: true
     preBuildScripts:
       # Builds the shared Kotlin core (shared/) as Shared.framework for the current SDK and
       # configuration. Gradle needs a JDK; Xcode does not inherit the shell's JAVA_HOME.
@@ -42,7 +58,9 @@ targets:
   SorghumCaptureTests:
     type: bundle.unit-test
     platform: iOS
-    sources: [SorghumCaptureTests]
+    sources:
+      - path: SorghumCaptureTests
+        excludes: ["**/._*"]
     dependencies:
       - target: SorghumCapture
     settings:
