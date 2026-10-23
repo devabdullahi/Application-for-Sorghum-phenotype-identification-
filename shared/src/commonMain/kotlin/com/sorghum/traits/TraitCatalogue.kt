@@ -34,11 +34,13 @@ data class DescriptorState(val code: String, val label: String)
  * fewer than there are states.
  *
  * @param unit the unit the edges, and every value compared with them, are in.
- * @param upperEdges strictly increasing edges.
+ * @param upperEdges strictly increasing, finite edges. An infinite edge would leave a state
+ *   no values, and NaN compares false with everything, so the increase check cannot catch it.
  */
 data class StateBins(val unit: MeasurementUnit, val upperEdges: List<Double>) {
     init {
         require(upperEdges.isNotEmpty()) { "Bins need at least one edge" }
+        require(upperEdges.all { it.isFinite() }) { "Bin edges must be finite, were $upperEdges" }
         require(upperEdges.zipWithNext().all { (lower, upper) -> lower < upper }) {
             "Bin edges must strictly increase, were $upperEdges"
         }

@@ -6,6 +6,14 @@ import kotlin.math.abs
 const val PROBABILITY_SUM_TOLERANCE = 1e-6
 
 /**
+ * Smallest allowed [TraitNoiseSettings.minStateProbability]. A floor below the 1e-6
+ * probability tolerance is lost in rounding, and its log (about -14 at 1e-6, -690 near the
+ * smallest double) would let one misread trait outweigh every other trait: a veto in all but
+ * name.
+ */
+const val MIN_STATE_PROBABILITY_FLOOR = 1e-6
+
+/**
  * Largest allowed [TraitNoiseSettings.minStateProbability]. Above it a trait with many states
  * (panicle shape has 13) would give most of its mass to noise and say little about the photo.
  */
@@ -23,8 +31,8 @@ data class TraitNoiseSettings(
     val minStateProbability: Double = 0.01,
 ) {
     init {
-        require(minStateProbability > 0.0 && minStateProbability <= MAX_STATE_PROBABILITY_FLOOR) {
-            "minStateProbability must be within (0, $MAX_STATE_PROBABILITY_FLOOR], was $minStateProbability"
+        require(minStateProbability >= MIN_STATE_PROBABILITY_FLOOR && minStateProbability <= MAX_STATE_PROBABILITY_FLOOR) {
+            "minStateProbability must be within [$MIN_STATE_PROBABILITY_FLOOR, $MAX_STATE_PROBABILITY_FLOOR], was $minStateProbability"
         }
     }
 }
@@ -33,9 +41,13 @@ data class TraitNoiseSettings(
  * What the app believes about one trait: a probability for each descriptor state.
  *
  * A trait never reports a bare state. Every probability is above zero and they sum to 1
- * within [PROBABILITY_SUM_TOLERANCE]; the constructor enforces this. Readers should build
- * estimates with [withNoiseFloor] (or [ContinuousTraitEstimate.toTraitEstimate]), which also
- * fills in every state of the descriptor and applies the floor.
+ * within [PROBABILITY_SUM_TOLERANCE]; the constructor enforces this.
+ *
+ * The public constructor is for data that is already floored and complete, such as a parity
+ * fixture or an estimate restored from storage. It checks positivity and the sum, but not the
+ * noise floor or that every descriptor state is present (reasoning refuses an estimate whose
+ * states differ from the descriptor's). Readers must build estimates with [withNoiseFloor] (or
+ * [ContinuousTraitEstimate.toTraitEstimate]), which fills in every state and applies the floor.
  *
  * @param traitId the [TraitDescriptor.id] this estimate is for.
  * @param probabilities probability by descriptor state code.
