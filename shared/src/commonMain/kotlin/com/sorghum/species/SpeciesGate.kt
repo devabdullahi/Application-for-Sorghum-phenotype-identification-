@@ -46,6 +46,9 @@ enum class SpeciesUnavailableReason {
 
     /** The species output has a different number of logits than the metadata has classes. */
     WRONG_LOGIT_COUNT,
+
+    /** A species logit is NaN or infinite, so no probability can be computed from it. */
+    NON_FINITE_LOGITS,
 }
 
 /** The outcome of the species check on one photo. */
@@ -108,6 +111,11 @@ class SpeciesGate(
             ?: return SpeciesCheck.Unavailable(SpeciesUnavailableReason.MISSING_SPECIES_OUTPUT)
         if (logits.size != metadata.speciesClasses.size) {
             return SpeciesCheck.Unavailable(SpeciesUnavailableReason.WRONG_LOGIT_COUNT)
+        }
+        // Softmax of a NaN or infinite logit gives NaN probabilities, which would read as
+        // "unsure" and ask for a pointless retake; the model output is broken instead.
+        if (logits.any { !it.isFinite() }) {
+            return SpeciesCheck.Unavailable(SpeciesUnavailableReason.NON_FINITE_LOGITS)
         }
         return decideSpecies(speciesProbabilities(logits, metadata.speciesTemperature), metadata, settings)
     }

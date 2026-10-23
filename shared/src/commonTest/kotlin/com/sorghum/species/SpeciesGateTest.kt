@@ -160,6 +160,20 @@ class SpeciesGateTest {
     }
 
     @Test
+    fun `a NaN logit leaves the photo unchecked`() {
+        val gate = SpeciesGate(metadata, { listOf(floatArrayOf(Float.NaN, 0f, 0f, 0f, 0f)) }, settings)
+
+        assertEquals(unavailable(SpeciesUnavailableReason.NON_FINITE_LOGITS), gate.check(anyPhoto))
+    }
+
+    @Test
+    fun `an infinite logit leaves the photo unchecked`() {
+        val gate = SpeciesGate(metadata, { listOf(floatArrayOf(5f, 0f, Float.NEGATIVE_INFINITY, 0f, 0f)) }, settings)
+
+        assertEquals(unavailable(SpeciesUnavailableReason.NON_FINITE_LOGITS), gate.check(anyPhoto))
+    }
+
+    @Test
     fun `the species head is read at its output index`() {
         val secondOutput = parseModelMetadata(metadataJson(temperature = 1f, outputIndex = 1))
         val gate = SpeciesGate(secondOutput, { listOf(floatArrayOf(0f), floatArrayOf(5f, 0f, 0f, 0f, 0f)) }, settings)
