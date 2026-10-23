@@ -82,6 +82,14 @@ class CaptureFlow(val settings: CaptureSettings, private val speciesGate: Specie
     var state: CaptureState = CaptureState.Guiding(guidance = null)
         private set
 
+    /**
+     * Why live capture cannot run ([CaptureState.CameraUnavailable] or
+     * [CaptureState.LevelSensorUnavailable]), or null while it works. Library photos need
+     * neither the camera nor the level sensor, so they stay available, and [retake] returns
+     * here instead of to a live guidance that would never start.
+     */
+    private var liveCaptureUnavailable: CaptureState? = null
+
     /** @param timestampMillis from a monotonic clock. */
     fun onTiltChanged(tilt: DeviceTilt, timestampMillis: Long) {
         latestTilt = tilt
@@ -105,6 +113,20 @@ class CaptureFlow(val settings: CaptureSettings, private val speciesGate: Specie
      */
     fun startCapture(): Boolean {
         if (state !is CaptureState.Guiding) return false
+        state = CaptureState.CheckingPhoto
+        return true
+    }
+
+    /**
+     * Moves to [CaptureState.CheckingPhoto] for a photo picked from the library and returns true
+     * if it should be checked now. Unlike [startCapture] this also works when the camera or the
+     * level sensor is unavailable (for example on the iOS simulator), since a library photo
+     * needs neither. Returns false while another photo is being checked or a result is showing.
+     */
+    fun startLibraryCheck(): Boolean {
+        val isWaitingForPhoto = state is CaptureState.Guiding ||
+            (liveCaptureUnavailable != null && state == liveCaptureUnavailable)
+        if (!isWaitingForPhoto) return false
         state = CaptureState.CheckingPhoto
         return true
     }
@@ -147,18 +169,23 @@ class CaptureFlow(val settings: CaptureSettings, private val speciesGate: Specie
     }
 
     fun onCameraUnavailable() {
+        liveCaptureUnavailable = CaptureState.CameraUnavailable
         state = CaptureState.CameraUnavailable
     }
 
     fun onLevelSensorUnavailable() {
+        liveCaptureUnavailable = CaptureState.LevelSensorUnavailable
         state = CaptureState.LevelSensorUnavailable
     }
 
-    /** Returns to live guidance, starting the steady hold from scratch. */
+    /**
+     * Returns to live guidance, starting the steady hold from scratch. When live capture cannot
+     * run, returns to the state that explains why, where a library photo can still be picked.
+     */
     fun retake() {
         holdTimer.reset()
         latestCoverage = null
-        state = CaptureState.Guiding(guidance = null)
+        state = liveCaptureUnavailable ?: CaptureState.Guiding(guidance = null)
     }
 
     private fun refreshGuidance(timestampMillis: Long) {
