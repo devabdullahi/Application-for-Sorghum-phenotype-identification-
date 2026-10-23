@@ -15,8 +15,16 @@ final class BundledSpeciesModelTests: XCTestCase {
         XCTAssertNil(BundledSpeciesModel.highestModelVersion(amongFileNames: names))
     }
 
-    func testAppWithoutABundledModelHasNoGate() {
-        // No model is bundled yet, so the app must run without the species check.
-        XCTAssertNil(BundledSpeciesModel.loadGate())
+    /// Whatever is installed in Resources/Models must behave: no model means no gate (the app
+    /// runs without the species check), and an installed model must load, so a broken export
+    /// fails here rather than silently turning the species check off.
+    func testBundledModelLoadsOrIsAbsent() {
+        let gate = BundledSpeciesModel.loadGate()
+
+        if let version = BundledSpeciesModel.highestModelVersion(in: .main) {
+            XCTAssertNotNil(gate, "traits-v\(version) is bundled but was refused; see the SpeciesModel log")
+        } else {
+            XCTAssertNil(gate)
+        }
     }
 }

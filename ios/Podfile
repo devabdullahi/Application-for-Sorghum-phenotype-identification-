@@ -1,6 +1,9 @@
 # LiteRT (TensorFlow Lite) for the species model, see docs/architecture/adr/0007-litert-ios-via-cocoapods.md.
 # After `xcodegen generate`, always run `pod install`, then open SorghumCapture.xcworkspace.
 platform :ios, '17.0'
+# Named explicitly: on exFAT drives macOS adds a "._SorghumCapture.xcodeproj" metadata file,
+# and CocoaPods refuses to choose between the two.
+project 'SorghumCapture.xcodeproj'
 
 target 'SorghumCapture' do
   use_frameworks!

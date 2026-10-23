@@ -3,8 +3,9 @@ import Shared
 import os
 
 /// Where the species model comes from: `traits-vN.tflite` and `traits-vN.json` in the app bundle.
-/// Put both files from `model/` export into `ios/SorghumCapture/Model/`, then run
-/// `xcodegen generate && pod install`; the highest N found is used.
+/// Install both files from a `model/` export with `ios/scripts/install-species-model.sh
+/// <export-dir>`, which puts them in `ios/SorghumCapture/Resources/Models/`; the highest N found
+/// is used.
 enum BundledSpeciesModel {
     private static let logger = Logger(subsystem: "com.sorghum.capture", category: "SpeciesModel")
 
@@ -50,6 +51,7 @@ enum BundledSpeciesModel {
         return highestModelVersion(amongFileNames: names)
     }
 
+    /// The largest N among file names of the form `traits-vN.json`; other names are ignored.
     static func highestModelVersion(amongFileNames names: [String]) -> Int? {
         names.compactMap { name -> Int? in
             guard name.hasPrefix("traits-v"), name.hasSuffix(".json") else { return nil }
