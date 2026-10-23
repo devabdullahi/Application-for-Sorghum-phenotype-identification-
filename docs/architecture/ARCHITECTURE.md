@@ -264,4 +264,5 @@ Steps 1–3 change no user-visible behaviour and should land before new features
 - Leaf-only early-season mode: useful given leaves carry ~3 traits?
 - Oldest iPhone / Android device to support? (sets R3 budget; iOS floor is iOS 17 today)
 - ~~LiteRT on iOS: CocoaPods or Swift Package Manager?~~ Decided: CocoaPods, TensorFlowLiteSwift 2.17.0 ([ADR-0007](adr/0007-litert-ios-via-cocoapods.md)).
+- LiteRT on Android: `com.google.ai.edge.litert:litert` 1.4.2, Interpreter API ([ADR-0010](adr/0010-litert-android-1-4.md), proposed).
 - Is a colour card on every board acceptable to users in the field?
