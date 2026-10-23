@@ -9,6 +9,7 @@ Run `uv run sorghum-model --help` from `model/`. See model/README.md for the ful
 
 import argparse
 import http.client
+import signal
 import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -62,6 +63,7 @@ def main(argv: list[str] | None = None) -> int:
     _add_train(commands)
     _add_export(commands)
     arguments = parser.parse_args(argv)
+    signal.signal(signal.SIGTERM, exit_on_terminate)
     try:
         arguments.run(arguments)
     except ValueError as error:
@@ -74,6 +76,16 @@ def main(argv: list[str] | None = None) -> int:
               "finished work is kept.", file=sys.stderr)
         return 1
     return 0
+
+
+# Exit status a shell reports for a process ended by SIGTERM (128 + 15).
+TERMINATED_EXIT_CODE = 143
+
+
+def exit_on_terminate(signal_number, frame) -> None:
+    """Turns `kill <pid>` into a normal exit, so `finally` blocks save the manifest rows and
+    remove the lock. Python's default SIGTERM ends the process without running them."""
+    raise SystemExit(TERMINATED_EXIT_CODE)
 
 
 def _add_inat_download(commands) -> None:

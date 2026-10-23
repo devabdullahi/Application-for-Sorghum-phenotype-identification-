@@ -179,3 +179,15 @@ def test_os_errors_end_with_a_message_not_a_traceback(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_run_split", broken)
     assert cli.main(["split"]) == 1
     assert "No space left on device" in capsys.readouterr().err
+
+
+def test_terminate_signal_exits_through_finally_blocks():
+    import pytest
+
+    cleaned = []
+    with pytest.raises(SystemExit) as exit_info:
+        try:
+            cli.exit_on_terminate(15, None)
+        finally:
+            cleaned.append(True)
+    assert exit_info.value.code == cli.TERMINATED_EXIT_CODE and cleaned == [True]
