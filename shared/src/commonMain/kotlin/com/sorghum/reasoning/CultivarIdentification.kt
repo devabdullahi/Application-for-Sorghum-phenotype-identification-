@@ -8,6 +8,18 @@ import kotlin.math.exp
 import kotlin.math.ln
 
 /**
+ * A reading whose every state is within this of 1/k (k states) is uniform: it says nothing
+ * about the sample, so reasoning treats it as not read. 1e-6 is the parity tolerance for
+ * probabilities (CLAUDE.md, Parity), so two estimates the platforms may legitimately differ by
+ * are treated alike.
+ *
+ * Why it matters: a uniform reading gives every cultivar the same likelihood 1/k, so it cannot
+ * move the ranking, but it would pull [CultivarMatch.fitScore] towards exactly 1.0, the
+ * default [ReasoningSettings.minFitScore], where rounding alone would decide "recognized".
+ */
+const val UNIFORM_READING_TOLERANCE = 1e-6
+
+/**
  * Thresholds of the cultivar decision.
  *
  * @param topMatchCount how many ranked cultivars the result lists. 5 fits one phone screen.
@@ -47,7 +59,7 @@ data class ReasoningSettings(
  *   cultivars: the geometric mean over traits of (number of states * per-trait likelihood).
  *   1.0 is what a cultivar with uniform rows scores, so above 1 means "fits better than
  *   chance". Scaling by the state count makes traits with 2 and 13 states comparable. 1.0 when
- *   there are no readings.
+ *   there are no readings. Uniform readings are left out (see [UNIFORM_READING_TOLERANCE]).
  */
 data class CultivarMatch(
     val cultivarId: String,
@@ -59,7 +71,11 @@ data class CultivarMatch(
 
 /** What the readings support. A plain enum, because only `SessionState` is sealed (ADR-0003). */
 enum class IdentificationOutcome {
-    /** One cultivar fits and the evidence separates it from all others. */
+    /**
+     * One cultivar fits and the evidence separates it from all others. Never returned without
+     * evidence: with no informative reading of a table trait the outcome is [GROUP], even when
+     * the tables hold a single cultivar.
+     */
     SINGLE_MATCH,
 
     /** Several cultivars fit and the readings cannot tell them apart; show all of them. */
@@ -108,27 +124,47 @@ data class CorrectedIdentification(
 /**
  * Ranks every cultivar by naive Bayes posterior given the trait readings, best first.
  *
- * Each trait is marginalised over its uncertain reading: P(reading | cultivar) =
- * sum over states of P(state | cultivar) * estimate(state). Traits the tables do not cover are
- * ignored. Pure and cheap (cultivars x traits x states), so it may run on the main thread.
+ * Each trait is marginalised over its uncertain reading (soft evidence): P(reading | cultivar)
+ * = sum over states of P(state | cultivar) * estimate(state). Traits the tables do not cover,
+ * and uniform readings ([UNIFORM_READING_TOLERANCE]), are ignored. Pure and cheap (cultivars x
+ * traits x states), so it may run on the main thread.
+ *
+ * ASSUMPTION — confirm with `model/`: the sum treats each estimate as a likelihood of the
+ * photo given the true state, up to a constant. That holds for measured readers, and for a
+ * learned head only if it outputs calibrated probabilities under a uniform state prior
+ * (trained on state-balanced data, or with the training state frequencies divided out). A
+ * head that has learned the training set's state frequencies counts that prior a second time,
+ * on top of the cultivar tables, and drags every result towards common states.
+ *
+ * @param estimates trait readings keyed by their own [TraitEstimate.traitId]. Each estimate of
+ *   a table trait must cover exactly its descriptor's state codes. Throws
+ *   [IllegalArgumentException] otherwise, because a misfiled or partial estimate is a bug in
+ *   the caller, not a reading to reason with.
  */
 fun rankCultivars(tables: CultivarTables, estimates: Map<String, TraitEstimate>): List<CultivarMatch> =
-    scoreCultivars(tables, estimates).map { it.match }
+    scoreCultivars(tables, informativeEstimates(tables, estimates)).map { it.match }
 
 /**
  * Ranks the cultivars and decides what the readings support: a single match, a group, or
  * "unrecognized" with the compatible group. Never forces a single pick when the evidence
  * cannot separate cultivars.
+ *
+ * With no evidence (no informative reading of any table trait) the outcome is
+ * [IdentificationOutcome.GROUP] with every cultivar: nothing was read, so nothing can be told
+ * apart. Not UNRECOGNIZED, which means the readings contradict the tables, and there are no
+ * readings to contradict them. See [rankCultivars] for the requirements on [estimates].
  */
 fun identifyCultivar(
     tables: CultivarTables,
     estimates: Map<String, TraitEstimate>,
     settings: ReasoningSettings,
 ): CultivarIdentification {
-    val scores = scoreCultivars(tables, estimates)
+    val evidence = informativeEstimates(tables, estimates)
+    val scores = scoreCultivars(tables, evidence)
     val best = scores.first()
     val group = scores.filter { exp(it.match.logLikelihood - best.match.logLikelihood) >= settings.minGroupLikelihoodRatio }
     val outcome = when {
+        evidence.isEmpty() -> IdentificationOutcome.GROUP
         best.match.fitScore < settings.minFitScore -> IdentificationOutcome.UNRECOGNIZED
         group.size == 1 -> IdentificationOutcome.SINGLE_MATCH
         else -> IdentificationOutcome.GROUP
@@ -174,9 +210,32 @@ private class UnnormalisedScore(
     val fitScore: Double,
 )
 
-private fun scoreCultivars(tables: CultivarTables, estimates: Map<String, TraitEstimate>): List<CultivarScore> {
-    val usedEstimates = estimates.filterKeys { it in tables.traitIds }
+/**
+ * The estimates reasoning uses: those of table traits that say something about the sample.
+ * Checks each one first, so a caller bug fails loudly instead of skewing the result.
+ */
+private fun informativeEstimates(tables: CultivarTables, estimates: Map<String, TraitEstimate>): Map<String, TraitEstimate> {
+    for ((traitId, estimate) in estimates) {
+        require(traitId == estimate.traitId) { "Estimate for ${estimate.traitId} is filed under $traitId" }
+    }
+    val coveredEstimates = estimates.filterKeys { it in tables.traitIds }
+    for ((traitId, estimate) in coveredEstimates) {
+        // The tables only hold catalogue traits (CultivarTables.init), so the descriptor exists.
+        val stateCodes = TraitCatalogue.descriptorFor(traitId)!!.stateCodes.toSet()
+        require(estimate.probabilities.keys == stateCodes) {
+            "Estimate for $traitId has states ${estimate.probabilities.keys}; the descriptor has $stateCodes"
+        }
+    }
+    return coveredEstimates.filterValues { !isUniform(it) }
+}
 
+private fun isUniform(estimate: TraitEstimate): Boolean {
+    val uniformProbability = 1.0 / estimate.probabilities.size
+    return estimate.probabilities.values.all { abs(it - uniformProbability) <= UNIFORM_READING_TOLERANCE }
+}
+
+/** Scores every cultivar against [usedEstimates], which [informativeEstimates] has checked and filtered. */
+private fun scoreCultivars(tables: CultivarTables, usedEstimates: Map<String, TraitEstimate>): List<CultivarScore> {
     val unnormalised = tables.cultivars.map { cultivar ->
         val logLikelihoodByTrait = usedEstimates.mapValues { (traitId, estimate) ->
             ln(traitLikelihood(tables.stateProbabilities(traitId, cultivar.id), estimate))

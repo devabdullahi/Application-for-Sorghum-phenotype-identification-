@@ -61,6 +61,122 @@ class CultivarIdentificationTest {
     }
 
     @Test
+    fun `one cultivar and no readings is a group and never a single match`() {
+        val result = identifyCultivar(singleCultivarTables(), emptyMap(), settings)
+
+        assertEquals(IdentificationOutcome.GROUP, result.outcome)
+        assertEquals(listOf("solo"), result.group.map { it.cultivarId })
+    }
+
+    @Test
+    fun `one cultivar and only readings the tables do not cover is a group`() {
+        val result = identifyCultivar(singleCultivarTables(), observed(GLUME to "4"), settings)
+
+        assertEquals(IdentificationOutcome.GROUP, result.outcome)
+    }
+
+    @Test
+    fun `one cultivar and readings that fit it is a single match`() {
+        val result = identifyCultivar(singleCultivarTables(), observed(MIDRIB to "1", LUSTRE to "+"), settings)
+
+        assertEquals(IdentificationOutcome.SINGLE_MATCH, result.outcome)
+        assertEquals(listOf("solo"), result.group.map { it.cultivarId })
+    }
+
+    @Test
+    fun `one cultivar and readings that contradict it is unrecognized`() {
+        val result = identifyCultivar(singleCultivarTables(), observed(MIDRIB to "5", LUSTRE to "0"), settings)
+
+        assertEquals(IdentificationOutcome.UNRECOGNIZED, result.outcome)
+    }
+
+    @Test
+    fun `a uniform reading counts as no reading`() {
+        // A uniform reading fits every cultivar exactly as well as chance: fitScore 1.0, right
+        // on the default minFitScore, where rounding alone would pick the outcome.
+        val uniformLustre = TraitEstimate.withNoiseFloor(TraitCatalogue.GRAIN_LUSTRE, mapOf("0" to 1.0, "+" to 1.0), testNoise)
+
+        val result = identifyCultivar(singleCultivarTables(), mapOf(LUSTRE to uniformLustre), settings)
+
+        assertEquals(IdentificationOutcome.GROUP, result.outcome)
+        assertEquals(1.0, result.group.single().fitScore)
+        assertEquals(0.0, result.group.single().logLikelihood)
+        assertTrue(result.explanation.isEmpty())
+    }
+
+    @Test
+    fun `a uniform reading does not dilute the fit of the other readings`() {
+        val uniformMidrib = TraitEstimate.withNoiseFloor(TraitCatalogue.MIDRIB_COLOUR, TraitCatalogue.MIDRIB_COLOUR.stateCodes.associateWith { 1.0 }, testNoise)
+        val informative = observed(LUSTRE to "0", GLUME to "6")
+
+        assertEquals(rankCultivars(tables, informative), rankCultivars(tables, informative + (MIDRIB to uniformMidrib)))
+    }
+
+    @Test
+    fun `a reading within the uniform tolerance is ignored and one just outside it is used`() {
+        val withinTolerance = lustreReadingOffUniformBy(UNIFORM_READING_TOLERANCE * 0.5)
+        val outsideTolerance = lustreReadingOffUniformBy(UNIFORM_READING_TOLERANCE * 2)
+
+        assertEquals(0.0, rankCultivars(singleCultivarTables(), mapOf(LUSTRE to withinTolerance)).single().logLikelihood)
+        assertTrue(rankCultivars(singleCultivarTables(), mapOf(LUSTRE to outsideTolerance)).single().logLikelihood != 0.0)
+    }
+
+    @Test
+    fun `refuses an estimate filed under another trait's id`() {
+        val misfiled = mapOf(MIDRIB to observed(LUSTRE to "0").getValue(LUSTRE))
+
+        val error = assertFailsWith<IllegalArgumentException> { rankCultivars(tables, misfiled) }
+        assertTrue(MIDRIB in error.message.orEmpty() && LUSTRE in error.message.orEmpty(), error.message)
+    }
+
+    @Test
+    fun `refuses an estimate that leaves out one of the descriptor's states`() {
+        val partial = TraitEstimate(MIDRIB, mapOf("1" to 0.5, "2" to 0.5))
+
+        val error = assertFailsWith<IllegalArgumentException> { rankCultivars(tables, mapOf(MIDRIB to partial)) }
+        assertTrue(MIDRIB in error.message.orEmpty())
+    }
+
+    @Test
+    fun `refuses an estimate with a state the descriptor does not have`() {
+        val extraState = TraitEstimate(LUSTRE, mapOf("0" to 0.4, "+" to 0.4, "9" to 0.2))
+
+        assertFailsWith<IllegalArgumentException> { rankCultivars(tables, mapOf(LUSTRE to extraState)) }
+    }
+
+    @Test
+    fun `a strong prior can rank first a cultivar the readings like slightly less`() {
+        // Midrib leans white (gamma) over yellow (delta), but delta is 17 times as likely a priori.
+        val skewed = parseCultivarTables(testTablesJson(alphaPrior = "0.05", otherPriors = listOf("0.05", "0.05", "0.85")).encodeToByteArray(), testNoise)
+        val estimates = mapOf(
+            MIDRIB to TraitEstimate.withNoiseFloor(TraitCatalogue.MIDRIB_COLOUR, mapOf("1" to 0.55, "3" to 0.45), testNoise),
+        ) + observed(LUSTRE to "0")
+
+        val ranking = rankCultivars(skewed, estimates)
+        val result = identifyCultivar(skewed, estimates, settings)
+
+        assertEquals("delta", ranking.first().cultivarId)
+        assertEquals("gamma", ranking.maxBy { it.logLikelihood }.cultivarId)
+        assertEquals(IdentificationOutcome.GROUP, result.outcome)
+        assertEquals(listOf("delta", "gamma"), result.group.map { it.cultivarId })
+    }
+
+    @Test
+    fun `top matches list every cultivar when the count equals the cultivar count`() {
+        val result = identifyCultivar(tables, observed(MIDRIB to "1"), settings.copy(topMatchCount = 4))
+
+        assertEquals(4, result.topMatches.size)
+    }
+
+    @Test
+    fun `top matches list every cultivar once when the count exceeds the cultivar count`() {
+        val result = identifyCultivar(tables, observed(MIDRIB to "1"), settings.copy(topMatchCount = 5))
+
+        assertEquals(listOf("gamma", "alpha", "beta", "delta").toSet(), result.topMatches.map { it.cultivarId }.toSet())
+        assertEquals(4, result.topMatches.size)
+    }
+
+    @Test
     fun `fit threshold boundary decides recognized or unrecognized`() {
         val estimates = observed(MIDRIB to "1", LUSTRE to "0", GLUME to "6")
         val fit = identifyCultivar(tables, estimates, settings).group.first().fitScore
@@ -173,6 +289,10 @@ class CultivarIdentificationTest {
 
     private fun groupWith(estimates: Map<String, TraitEstimate>, minGroupLikelihoodRatio: Double): List<String> =
         identifyCultivar(tables, estimates, settings.copy(minGroupLikelihoodRatio = minGroupLikelihoodRatio)).group.map { it.cultivarId }
+
+    /** A grain lustre reading of 0.5 + [offset] for "0", off uniform by exactly [offset] per state. */
+    private fun lustreReadingOffUniformBy(offset: Double): TraitEstimate =
+        TraitEstimate(LUSTRE, mapOf("0" to 0.5 + offset, "+" to 0.5 - offset))
 
     private fun assertClose(expected: Double, actual: Double, tolerance: Double) {
         assertTrue(abs(expected - actual) < tolerance, "expected $expected, was $actual")

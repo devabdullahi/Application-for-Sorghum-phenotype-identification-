@@ -17,10 +17,12 @@ internal fun testTablesJson(
     schemaVersion: Int = 1,
     attribution: String = "Contains Genesys data (ICRISAT characterization), CC BY-SA 4.0",
     alphaPrior: String = "0.25",
+    otherPriors: List<String> = listOf("0.25", "0.25", "0.25"),
     midribTraitId: String = TraitCatalogue.MIDRIB_COLOUR.id,
     gammaMidribRow: String = """{"1": 1.0}""",
     extraLustreRow: String = "",
     secondCultivarId: String = "beta",
+    secondCultivarName: String = "Beta",
 ): String = """
 {
   "schemaVersion": $schemaVersion,
@@ -28,9 +30,9 @@ internal fun testTablesJson(
   "attribution": "$attribution",
   "cultivars": [
     {"id": "alpha", "name": "Alpha", "prior": $alphaPrior},
-    {"id": "$secondCultivarId", "name": "Beta", "prior": 0.25},
-    {"id": "gamma", "name": "Gamma", "prior": 0.25},
-    {"id": "delta", "name": "Delta", "prior": 0.25}
+    {"id": "$secondCultivarId", "name": "$secondCultivarName", "prior": ${otherPriors[0]}},
+    {"id": "gamma", "name": "Gamma", "prior": ${otherPriors[1]}},
+    {"id": "delta", "name": "Delta", "prior": ${otherPriors[2]}}
   ],
   "traits": {
     "$midribTraitId": {
@@ -55,6 +57,27 @@ internal fun testTablesJson(
   }
 }
 """
+
+/**
+ * Tables that hold one cultivar, "solo": white midrib (1), lustrous grain (+). With a single
+ * cultivar the group always has one member, so these show when the outcome must not be
+ * [IdentificationOutcome.SINGLE_MATCH].
+ */
+internal fun singleCultivarTables(): CultivarTables = parseCultivarTables(
+    """
+    {
+      "schemaVersion": 1,
+      "dataVersion": 1,
+      "attribution": "Contains Genesys data (ICRISAT characterization), CC BY-SA 4.0",
+      "cultivars": [ {"id": "solo", "name": "Solo", "prior": 1.0} ],
+      "traits": {
+        "midribColour": { "solo": {"1": 1.0} },
+        "grainLustre": { "solo": {"+": 1.0} }
+      }
+    }
+    """.encodeToByteArray(),
+    testNoise,
+)
 
 /** The floor every test uses for tables and estimates. */
 internal val testNoise = TraitNoiseSettings(minStateProbability = 0.01)

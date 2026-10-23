@@ -19,24 +19,28 @@ const val SUPPORTED_CULTIVAR_TABLES_SCHEMA_VERSION = 1
  */
 fun interface CultivarTableSource {
     /**
-     * Returns the raw UTF-8 bytes of `cultivars-vN.json`. Throws if the file cannot be read;
-     * the app cannot reason without tables, so that is a startup error.
+     * Returns the raw UTF-8 bytes of `cultivars-vN.json`, or null when the file is missing or
+     * cannot be read. Null rather than an exception because a Swift implementation cannot
+     * throw through a Kotlin interface; [loadCultivarTables] turns null into the startup error.
      */
-    fun readCultivarTablesJson(): ByteArray
+    fun readCultivarTablesJson(): ByteArray?
 }
 
 /** The cultivar tables cannot be used; the app must stop at startup (ARCHITECTURE.md section 4.3). */
 class InvalidCultivarTablesException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
-/** Reads and parses the tables from [source] with the default noise floor. See [parseCultivarTables]. */
-fun loadCultivarTables(source: CultivarTableSource): CultivarTables = loadCultivarTables(source, TraitNoiseSettings())
-
-/** Reads and parses the tables from [source]. See [parseCultivarTables]. */
-fun loadCultivarTables(source: CultivarTableSource, noise: TraitNoiseSettings): CultivarTables =
-    parseCultivarTables(source.readCultivarTablesJson(), noise)
-
-/** Parses `cultivars-vN.json` with the default noise floor. Swift cannot use Kotlin default arguments. */
-fun parseCultivarTables(jsonBytes: ByteArray): CultivarTables = parseCultivarTables(jsonBytes, TraitNoiseSettings())
+/**
+ * Reads and parses the tables from [source]. See [parseCultivarTables].
+ *
+ * Throws [InvalidCultivarTablesException] when the source has no file, too: missing and invalid
+ * tables are the same startup error to the user (ARCHITECTURE.md section 4.3).
+ */
+@Throws(InvalidCultivarTablesException::class)
+fun loadCultivarTables(source: CultivarTableSource, noise: TraitNoiseSettings = TraitNoiseSettings()): CultivarTables {
+    val jsonBytes = source.readCultivarTablesJson()
+        ?: throw InvalidCultivarTablesException("Cultivar tables file is missing or cannot be read")
+    return parseCultivarTables(jsonBytes, noise)
+}
 
 /**
  * Parses and validates `cultivars-vN.json`, then applies the noise floor to every row.
@@ -57,14 +61,17 @@ fun parseCultivarTables(jsonBytes: ByteArray): CultivarTables = parseCultivarTab
  * ```
  * Rows hold raw genebank state frequencies: they may contain zeros and may leave states out
  * (counted as 0), but must sum to 1. The floor is applied here, in one place, rather than
- * trusted from the file. A cultivar without a row for a trait gets a uniform row (no data
- * means "could be any state"). ASSUMPTION — confirm both with `model/`.
+ * trusted from the file. Every listed cultivar needs a row for every trait in the file: a
+ * missing row is partial data, and the file is refused rather than the gap filled with a
+ * uniform row (ARCHITECTURE.md section 4.3). If `model/` lacks Genesys data for a cultivar's
+ * trait, it decides what row to write. ASSUMPTION — confirm both with `model/`.
  *
  * Throws [InvalidCultivarTablesException] on a schema version mismatch, an unknown trait,
- * state or cultivar, a row or prior set that does not sum to 1, or malformed JSON. Reasoning
- * never runs on partial tables.
+ * state or cultivar, a missing row, a blank cultivar id or name, a row or prior set that does
+ * not sum to 1, or malformed JSON. Reasoning never runs on partial tables.
  */
-fun parseCultivarTables(jsonBytes: ByteArray, noise: TraitNoiseSettings): CultivarTables {
+@Throws(InvalidCultivarTablesException::class)
+fun parseCultivarTables(jsonBytes: ByteArray, noise: TraitNoiseSettings = TraitNoiseSettings()): CultivarTables {
     val document = try {
         tablesJson.decodeFromString<CultivarTablesDocument>(jsonBytes.decodeToString())
     } catch (exception: SerializationException) {
@@ -92,14 +99,16 @@ private fun CultivarTablesDocument.toCultivarTables(noise: TraitNoiseSettings): 
     if (attribution.isBlank()) invalid("attribution is required by the Genesys CC BY-SA licence")
     if (traits.isEmpty()) invalid("tables have no traits")
 
-    val cultivarIds = cultivars.map { it.id }.toSet()
+    // Built first so a blank id or name is refused before rows are matched to cultivars.
+    val parsedCultivars = cultivars.map { Cultivar(it.id, it.name) }
+    val cultivarIds = parsedCultivars.map { it.id }.toSet()
     val stateProbabilitiesByTrait = traits.mapValues { (traitId, rows) ->
         val descriptor = TraitCatalogue.descriptorFor(traitId) ?: invalid("unknown trait $traitId")
         val unknownCultivars = rows.keys - cultivarIds
         if (unknownCultivars.isNotEmpty()) invalid("trait $traitId has rows for unlisted cultivars $unknownCultivars")
 
         cultivarIds.associateWith { cultivarId ->
-            val rawRow = rows[cultivarId] ?: descriptor.stateCodes.associateWith { 1.0 / descriptor.states.size }
+            val rawRow = rows[cultivarId] ?: invalid("trait $traitId has no row for cultivar $cultivarId")
             val unknownStates = rawRow.keys.filterNot { descriptor.hasState(it) }
             if (unknownStates.isNotEmpty()) invalid("row $traitId/$cultivarId has unknown state codes $unknownStates")
             val total = rawRow.values.sum()
@@ -113,7 +122,7 @@ private fun CultivarTablesDocument.toCultivarTables(noise: TraitNoiseSettings): 
         schemaVersion = schemaVersion,
         dataVersion = dataVersion,
         attribution = attribution,
-        cultivars = cultivars.map { Cultivar(it.id, it.name) },
+        cultivars = parsedCultivars,
         priors = cultivars.associate { it.id to it.prior },
         stateProbabilitiesByTrait = stateProbabilitiesByTrait,
     )

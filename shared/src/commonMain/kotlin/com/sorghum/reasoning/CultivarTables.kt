@@ -1,10 +1,21 @@
 package com.sorghum.reasoning
 
 import com.sorghum.traits.PROBABILITY_SUM_TOLERANCE
+import com.sorghum.traits.TraitCatalogue
 import kotlin.math.abs
 
-/** A cultivar the app can identify; one row of `cultivars-vN.json`. */
-data class Cultivar(val id: String, val name: String)
+/**
+ * A cultivar the app can identify; one row of `cultivars-vN.json`.
+ *
+ * @param id the accession id the tables key rows by; not blank.
+ * @param name the name shown to the user; not blank, or the result would show an empty line.
+ */
+data class Cultivar(val id: String, val name: String) {
+    init {
+        require(id.isNotBlank()) { "Cultivar id must not be blank" }
+        require(name.isNotBlank()) { "Cultivar $id needs a name" }
+    }
+}
 
 /**
  * The naive Bayes tables reasoning runs on: P(state | cultivar) per trait, plus priors.
@@ -19,7 +30,9 @@ data class Cultivar(val id: String, val name: String)
  * @param cultivars every cultivar, in file order. Ties in the ranking keep this order.
  * @param priors prior probability by cultivar id; all positive, summing to 1.
  * @param stateProbabilitiesByTrait trait id -> cultivar id -> state code -> P(state | cultivar).
- *   Every cultivar has a row for every trait, and every row covers all of the trait's states.
+ *   Every trait is in [TraitCatalogue], every cultivar has a row for every trait, and every row
+ *   covers exactly the descriptor's state codes. Reasoning relies on this to match a reading's
+ *   states to a row.
  */
 data class CultivarTables(
     val schemaVersion: Int,
@@ -36,8 +49,13 @@ data class CultivarTables(
         require(priors.keys == cultivarIds.toSet()) { "Priors must cover exactly the listed cultivars" }
         requireDistribution(priors.values, "Priors")
         for ((traitId, rows) in stateProbabilitiesByTrait) {
+            val descriptor = requireNotNull(TraitCatalogue.descriptorFor(traitId)) { "Trait $traitId is not in the catalogue" }
+            val stateCodes = descriptor.stateCodes.toSet()
             require(rows.keys == cultivarIds.toSet()) { "Trait $traitId must have one row per listed cultivar" }
-            rows.forEach { (cultivarId, row) -> requireDistribution(row.values, "Row $traitId/$cultivarId") }
+            rows.forEach { (cultivarId, row) ->
+                require(row.keys == stateCodes) { "Row $traitId/$cultivarId has states ${row.keys}; the descriptor has $stateCodes" }
+                requireDistribution(row.values, "Row $traitId/$cultivarId")
+            }
         }
     }
 

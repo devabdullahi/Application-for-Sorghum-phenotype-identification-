@@ -97,4 +97,11 @@ class TraitCatalogueTest {
     fun `bin edges must increase`() {
         assertFailsWith<IllegalArgumentException> { StateBins(MeasurementUnit.GRAMS, listOf(2.0, 2.0)) }
     }
+
+    @Test
+    fun `bin edges must be finite`() {
+        assertFailsWith<IllegalArgumentException> { StateBins(MeasurementUnit.GRAMS, listOf(Double.NaN)) }
+        assertFailsWith<IllegalArgumentException> { StateBins(MeasurementUnit.GRAMS, listOf(1.0, Double.POSITIVE_INFINITY)) }
+        assertFailsWith<IllegalArgumentException> { StateBins(MeasurementUnit.GRAMS, listOf(Double.NEGATIVE_INFINITY, 1.0)) }
+    }
 }

@@ -31,15 +31,20 @@ class CultivarTablesParserTest {
     }
 
     @Test
-    fun `a cultivar without a row for a trait gets a uniform row`() {
-        val tables = parseCultivarTables(
-            testTablesJson(gammaMidribRow = "null").replace(""""gamma": null,""", "").encodeToByteArray(),
-            testNoise,
-        )
+    fun `refuses a cultivar without a row for a trait`() {
+        // A missing row is partial data, not "could be any state" (ARCHITECTURE.md section 4.3).
+        assertInvalid(testTablesJson(gammaMidribRow = "null").replace(""""gamma": null,""", ""))
+    }
 
-        val row = tables.stateProbabilities(MIDRIB, "gamma")
+    @Test
+    fun `refuses a blank cultivar id`() {
+        // Renamed everywhere, so only the blank id itself can be the reason for refusing.
+        assertInvalid(testTablesJson().replace(""""beta"""", """" """"))
+    }
 
-        row.values.forEach { assertClose(1.0 / 6, it) }
+    @Test
+    fun `refuses a blank cultivar name`() {
+        assertInvalid(testTablesJson(secondCultivarName = ""))
     }
 
     @Test
@@ -108,6 +113,13 @@ class CultivarTablesParserTest {
         val source = CultivarTableSource { testTablesJson().encodeToByteArray() }
 
         assertEquals(4, loadCultivarTables(source).cultivars.size)
+    }
+
+    @Test
+    fun `a missing tables file is a startup error`() {
+        val source = CultivarTableSource { null }
+
+        assertFailsWith<InvalidCultivarTablesException> { loadCultivarTables(source) }
     }
 
     private fun assertInvalid(json: String) {

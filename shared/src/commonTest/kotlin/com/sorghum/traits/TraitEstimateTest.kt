@@ -106,17 +106,24 @@ class TraitEstimateTest {
     }
 
     @Test
-    fun `refuses a floor that would leave no room for the reading`() {
-        // 21 states at the largest allowed floor would hand more than all the mass to noise.
-        val manyStates = TraitDescriptor(
-            id = "manyStates",
-            name = "Many states",
-            photoType = PhotoType.LEAF,
-            method = TraitMethod.LEARNED,
-            states = (1..21).map { DescriptorState(it.toString(), "State $it") },
-        )
+    fun `the largest floor still leaves mass for the reading with 19 states`() {
+        // 19 * 0.05 = 0.95, so 5% of the mass is left for what was read.
+        val estimate = TraitEstimate.withNoiseFloor(descriptorWithStates(19), mapOf("1" to 1.0), largestFloor)
+
+        assertTrue(estimate.probabilityOf("1") > MAX_STATE_PROBABILITY_FLOOR)
+    }
+
+    @Test
+    fun `refuses the largest floor with 20 states where noise takes all the mass`() {
         assertFailsWith<IllegalArgumentException> {
-            TraitEstimate.withNoiseFloor(manyStates, mapOf("1" to 1.0), TraitNoiseSettings(minStateProbability = MAX_STATE_PROBABILITY_FLOOR))
+            TraitEstimate.withNoiseFloor(descriptorWithStates(20), mapOf("1" to 1.0), largestFloor)
+        }
+    }
+
+    @Test
+    fun `refuses the largest floor with 21 states where noise takes more than all the mass`() {
+        assertFailsWith<IllegalArgumentException> {
+            TraitEstimate.withNoiseFloor(descriptorWithStates(21), mapOf("1" to 1.0), largestFloor)
         }
     }
 
@@ -131,16 +138,33 @@ class TraitEstimateTest {
     }
 
     @Test
-    fun `noise settings accept the smallest positive and the largest allowed floor`() {
-        TraitNoiseSettings(minStateProbability = Double.MIN_VALUE)
+    fun `noise settings accept the smallest and the largest allowed floor`() {
+        TraitNoiseSettings(minStateProbability = MIN_STATE_PROBABILITY_FLOOR)
+        TraitNoiseSettings(minStateProbability = MIN_STATE_PROBABILITY_FLOOR * 1.01)
         TraitNoiseSettings(minStateProbability = MAX_STATE_PROBABILITY_FLOOR)
     }
 
     @Test
-    fun `noise settings refuse a zero floor and one above the maximum`() {
+    fun `noise settings refuse a floor just below the smallest allowed`() {
+        assertFailsWith<IllegalArgumentException> { TraitNoiseSettings(minStateProbability = MIN_STATE_PROBABILITY_FLOOR * 0.99) }
+        assertFailsWith<IllegalArgumentException> { TraitNoiseSettings(minStateProbability = Double.MIN_VALUE) }
         assertFailsWith<IllegalArgumentException> { TraitNoiseSettings(minStateProbability = 0.0) }
+    }
+
+    @Test
+    fun `noise settings refuse a floor just above the largest allowed`() {
         assertFailsWith<IllegalArgumentException> { TraitNoiseSettings(minStateProbability = MAX_STATE_PROBABILITY_FLOOR + 1e-9) }
     }
+
+    private val largestFloor = TraitNoiseSettings(minStateProbability = MAX_STATE_PROBABILITY_FLOOR)
+
+    private fun descriptorWithStates(stateCount: Int) = TraitDescriptor(
+        id = "states$stateCount",
+        name = "$stateCount states",
+        photoType = PhotoType.LEAF,
+        method = TraitMethod.LEARNED,
+        states = (1..stateCount).map { DescriptorState(it.toString(), "State $it") },
+    )
 
     private fun assertClose(expected: Double, actual: Double) {
         assertTrue(abs(expected - actual) < 1e-9, "expected $expected, was $actual")
