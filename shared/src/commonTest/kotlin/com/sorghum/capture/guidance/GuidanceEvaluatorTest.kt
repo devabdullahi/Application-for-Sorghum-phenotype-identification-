@@ -1,6 +1,6 @@
 package com.sorghum.capture.guidance
 
-import com.sorghum.capture.sample.SampleCoverage
+import com.sorghum.segmentation.SampleCoverage
 import kotlin.test.assertEquals
 import kotlin.test.Test
 

@@ -46,7 +46,7 @@ is a bug.
 | `app/.../camera/TiltSensor.kt` | Gravity sensor (accelerometer fallback) to `DeviceTilt` flow | No |
 | `shared/.../session/CaptureFlow.kt` | Capture state machine: guiding, checking, accepted, rejected, failures | Yes |
 | `shared/.../capture/guidance/*` | Tilt to instruction, steady-hold timer (800 ms) | Yes |
-| `shared/.../capture/sample/GreenCoverage.kt` | Excess-green plant detector, used live **and** after capture | Yes |
+| `shared/.../segmentation/GreenCoverage.kt` | Excess-green plant detector, used live **and** after capture | Yes |
 | `shared/.../capture/quality/PhotoQuality.kt` | No sample / too dark / glare / blurry at 640 px | Yes |
 | `shared/.../imaging/PixelImage.kt` | Plain RGB image type crossing the native/shared boundary | Type only |
 
