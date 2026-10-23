@@ -1,8 +1,6 @@
 package com.sorghum.segmentation
 
 import com.sorghum.imaging.PixelImage
-import kotlin.math.max
-import kotlin.math.min
 
 /**
  * How much of an image region is covered by green plant tissue.
@@ -64,44 +62,24 @@ const val LIVE_ANALYSIS_LONG_SIDE_PIXELS = 160
  * Used both on small live analysis frames and on the captured photo, so the live guidance
  * and the final check agree on what counts as "sample present".
  */
-fun measureSampleCoverage(image: PixelImage, settings: GreenDetectionSettings): SampleCoverage {
-    val width = image.width
-    val height = image.height
+fun measureSampleCoverage(image: PixelImage, settings: GreenDetectionSettings): SampleCoverage =
+    measureGreenMask(image, settings).toSampleCoverage()
 
-    // Always at least one pixel wide, so tiny analysis frames still have an edge band.
-    val edgeBand = max(1, (min(width, height) * settings.edgeBandFraction).toInt())
-
-    var greenPixels = 0
-    var edgePixels = 0
-    var greenEdgePixels = 0
-    var confidenceSum = 0f
-    for (y in 0 until height) {
-        for (x in 0 until width) {
-            val pixelIndex = y * width + x
-            val excessGreen = excessGreenIndex(
-                image.redAt(pixelIndex), image.greenAt(pixelIndex), image.blueAt(pixelIndex), settings,
-            )
-            val isGreen = excessGreen != null && excessGreen >= settings.minExcessGreen
-            val isInEdgeBand = x < edgeBand || x >= width - edgeBand ||
-                y < edgeBand || y >= height - edgeBand
-
-            if (isGreen) {
-                greenPixels++
-                confidenceSum += greenConfidenceOf(excessGreen!!, settings)
-            }
-            if (isInEdgeBand) {
-                edgePixels++
-                if (isGreen) greenEdgePixels++
-            }
+/**
+ * Marks the green plant pixels of an image region (see [isPlantPixel]); each one's confidence is
+ * [greenConfidenceOf]. This is the leaf detector behind [detectSampleMask].
+ */
+fun measureGreenMask(image: PixelImage, settings: GreenDetectionSettings): SampleMask =
+    buildSampleMask(image.width, image.height, settings.edgeBandFraction) { pixelIndex ->
+        val excessGreen = excessGreenIndex(
+            image.redAt(pixelIndex), image.greenAt(pixelIndex), image.blueAt(pixelIndex), settings,
+        )
+        if (excessGreen != null && excessGreen >= settings.minExcessGreen) {
+            greenConfidenceOf(excessGreen, settings)
+        } else {
+            null
         }
     }
-
-    return SampleCoverage(
-        greenFraction = greenPixels.toFloat() / (width * height),
-        edgeGreenFraction = greenEdgePixels.toFloat() / edgePixels,
-        greenConfidence = if (greenPixels == 0) 0f else confidenceSum / greenPixels,
-    )
-}
 
 /**
  * Classifies one pixel with the excess-green index, ExG = 2g − r − b, computed on chromatic

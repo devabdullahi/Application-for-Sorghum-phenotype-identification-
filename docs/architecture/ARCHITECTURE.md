@@ -100,7 +100,7 @@ Rules:
 | --- | --- | --- |
 | `imaging` | `PixelImage(width, height, rgb: ByteArray)`, `NormalizedRect`, `PixelRect`, crop/downscale/rotate on `PixelImage` | `imaging/ImageRects.kt` (rect types); Bitmap code in `camera/FrameCropper.kt` to be replaced |
 | `capture` | Target frame, frame mapping, tilt → guidance state, steady-hold timer, photo quality check | `frame/`, `guidance/`, `quality/` |
-| `segmentation` | Plant mask by excess-green (leaves); background-contrast mask vs plain board (panicles, grain); sample coverage + edge touch | `segmentation/GreenCoverage.kt`; contrast mask is new |
+| `segmentation` | Plant mask by excess-green (leaves); background-contrast mask vs plain board (panicles, grain); sample coverage + edge touch | `segmentation/`: `GreenCoverage.kt`, `ContrastMask.kt`, `detectSampleMask` in `SampleDetection.kt`; capture flow still calls the green detector only |
 | `species` | Map the model's species head to `SpeciesEstimate` (sorghum / named look-alike / other plant / no plant); decide continue, "not sorghum", or "unsure — retake" against a calibrated threshold from model metadata | New (ADR-0006) |
 | `calibration` | Find colour card (ColorChecker Classic Mini in a board slot), fit affine colour correction in linear sRGB to known patch values, pixels-per-mm from patch pitch ([ADR-0008](adr/0008-colour-card-choice.md)) | `shared/calibration/` (PlantCV affine method, linear light) |
 | `traits` | Trait catalogue (descriptor id, states, photo type, method); `TraitEstimate` (distribution over states, or value + uncertainty for continuous traits); measured readers (midrib colour, pigmentation, glume colour, grain colour, lustre, seed size); mapping of `ImageModel` trait heads to `TraitEstimate` | New |
