@@ -68,6 +68,63 @@ class CaptureFlowTest {
     }
 
     @Test
+    fun `a library photo can be checked during live guidance`() {
+        val flow = CaptureFlow()
+
+        assertTrue(flow.startLibraryCheck())
+        assertEquals(CaptureState.CheckingPhoto, flow.state)
+    }
+
+    @Test
+    fun `only one photo is checked at a time`() {
+        val flow = CaptureFlow()
+        flow.startCapture()
+
+        assertFalse(flow.startLibraryCheck())
+        assertFalse(flow.startCapture())
+        assertEquals(CaptureState.CheckingPhoto, flow.state)
+    }
+
+    @Test
+    fun `without a level sensor a library photo can still be checked`() {
+        val flow = CaptureFlow()
+        flow.onLevelSensorUnavailable()
+
+        assertFalse(flow.startCapture())
+        assertTrue(flow.startLibraryCheck())
+        flow.onPhotoChecked(rejection = null)
+        assertEquals(CaptureState.PhotoAccepted(SpeciesCheck.Unavailable(SpeciesUnavailableReason.NO_MODEL)), flow.state)
+
+        // There is no live guidance to go back to, so retake returns to the explanation.
+        flow.retake()
+        assertEquals(CaptureState.LevelSensorUnavailable, flow.state)
+    }
+
+    @Test
+    fun `without a camera a library photo can still be checked`() {
+        val flow = CaptureFlow()
+        flow.onCameraUnavailable()
+
+        assertFalse(flow.startCapture())
+        assertTrue(flow.startLibraryCheck())
+        flow.onPhotoChecked(RejectionReason.TOO_DARK)
+        assertEquals(CaptureState.PhotoRejected(RejectionReason.TOO_DARK), flow.state)
+
+        flow.retake()
+        assertEquals(CaptureState.CameraUnavailable, flow.state)
+    }
+
+    @Test
+    fun `a library photo is not started over a result`() {
+        val flow = CaptureFlow()
+        flow.onCameraUnavailable()
+        flow.startLibraryCheck()
+        flow.onPhotoChecked(rejection = null)
+
+        assertFalse(flow.startLibraryCheck())
+    }
+
+    @Test
     fun `readings during the photo check do not bring guidance back`() {
         val flow = CaptureFlow()
         flow.startCapture()

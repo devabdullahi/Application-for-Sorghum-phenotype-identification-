@@ -104,10 +104,10 @@ final class CaptureModel {
     }
 
     /// Analyses a photo picked from the photo library with the same shared checks as a camera
-    /// photo. The whole photo is used, since it has no target frame. Ignored while a photo is
-    /// already being checked.
+    /// photo. The whole photo is used, since it has no target frame. Works without a camera or
+    /// level sensor (the shared flow decides); ignored while a photo is already being checked.
     func analyzeLibraryPhoto(_ photo: UIImage) {
-        guard flow.startCapture() else { return }
+        guard flow.startLibraryCheck() else { return }
         publishState()
 
         let flow = self.flow

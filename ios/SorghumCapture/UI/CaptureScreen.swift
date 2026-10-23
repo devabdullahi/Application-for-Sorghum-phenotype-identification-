@@ -15,10 +15,11 @@ struct CaptureScreen: View {
             switch model.state {
             case .permissionDenied:
                 permissionMessage
+            // Live capture cannot run, but a library photo needs neither camera nor sensor.
             case .cameraUnavailable:
-                messageText("The camera could not be started. Close other camera apps and try again.")
+                messageWithLibraryPicker("The camera could not be started. Close other camera apps and try again, or check a photo from your library.")
             case .levelSensorUnavailable:
-                messageText("This device has no motion sensor, so the level guide cannot work.")
+                messageWithLibraryPicker("This device has no motion sensor, so the level guide cannot work. You can still check a photo from your library.")
             // One branch for both states, so SwiftUI keeps the same camera preview while the
             // photo is checked. A new preview would re-attach the running capture session to a
             // new layer, which blocks the main thread for seconds.
@@ -232,6 +233,16 @@ struct CaptureScreen: View {
                 if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
                     openURL(settingsURL)
                 }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+
+    private func messageWithLibraryPicker(_ message: String) -> some View {
+        VStack(spacing: 16) {
+            messageText(message)
+            PhotosPicker(selection: $pickedPhoto, matching: .images) {
+                Label("Choose photo from library", systemImage: "photo.on.rectangle")
             }
             .buttonStyle(.borderedProminent)
         }
