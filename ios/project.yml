@@ -3,8 +3,9 @@
 #   cd ios && xcodegen generate && pod install && open SorghumCapture.xcworkspace
 #
 # Species model: the only place for versioned model files is SorghumCapture/Resources/Models/.
-# The real traits-vN.tflite and traits-vN.json are committed there (plain git, about 1-2 MB),
-# so every checkout bundles the model and the R7 parity test runs. Install an export with
+# The real traits-vN.tflite and traits-vN.json are to be committed there (plain git, about
+# 1-2 MB) once traits-v1 exists, so every checkout bundles the model and the R7 parity test
+# runs. Install an export with
 #   ios/scripts/install-species-model.sh <export-dir>
 # which checks that traits-vN.tflite and traits-vN.json share N, replaces the old version and
 # regenerates the project. The app loads the highest N it finds (BundledSpeciesModel).

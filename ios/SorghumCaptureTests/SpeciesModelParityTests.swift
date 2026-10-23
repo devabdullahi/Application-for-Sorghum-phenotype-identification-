@@ -48,6 +48,7 @@ final class SpeciesModelParityTests: XCTestCase {
 
         for fixture in fixtures.entries {
             let photo = try decodeFixture(fixture.image, in: fixtures.directory, expectedSize: installed.inputSize)
+            recorder.reset()
             let iosCheck = gate.check(photo: photo)
 
             // A wrong output count or logit count stops inside SpeciesGate.check before this
@@ -224,6 +225,12 @@ private final class RecordingImageModel: NSObject, ImageModel {
 
     init(wrapping model: LiteRTImageModel) {
         self.model = model
+    }
+
+    /// Forgets the last outputs, so a check that never reaches the model cannot be compared
+    /// against the previous fixture's logits.
+    func reset() {
+        lastOutputs = nil
     }
 
     func run(inputTensor: KotlinByteArray) -> [KotlinFloatArray] {

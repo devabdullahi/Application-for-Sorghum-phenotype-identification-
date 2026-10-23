@@ -4,8 +4,9 @@
 #
 #   ios/scripts/install-species-model.sh <export-dir>
 #
-# The installed traits-vN.tflite and traits-vN.json are committed to git (plain git, no LFS;
-# about 1-2 MB), so every checkout bundles the model and the R7 parity test runs everywhere.
+# The installed traits-vN.tflite and traits-vN.json are to be committed (plain git, no LFS;
+# about 1-2 MB) once traits-v1 exists, so every checkout bundles the model and the R7 parity
+# test runs everywhere.
 # Commit them together with the matching fixtures in shared/src/commonTest/resources/species/.
 #
 # <export-dir> must hold exactly one traits-vN.tflite and one traits-vN.json with the same N.
@@ -113,6 +114,14 @@ mv -f "$staging_dir/$model_name" "$staging_dir/$metadata_name" "$models_dir/"
 find "$models_dir" -maxdepth 1 -name 'traits-v*' ! -name "$model_name" ! -name "$metadata_name" -delete
 find "$models_dir" -maxdepth 1 -name '._*' -delete
 
+echo "Installed species model v$model_version into ${models_dir#"$ios_dir/"}."
+# Printed before regenerating, so the warning is not lost if that step fails.
+if (( previous_version > model_version )); then
+    # An incremental build leaves the old traits-v$previous_version files in the built app, and
+    # the app loads the highest version it finds.
+    echo "Clean build after installing a lower version: v$previous_version was installed before (Xcode: Product > Clean Build Folder)."
+fi
+
 trap 'echo "install-species-model: traits-v$model_version is in place, but regenerating the Xcode project failed; fix the error above, then run: cd ios && xcodegen generate && pod install" >&2' ERR
 # Same order as always: regenerating the project drops the pods' integration, pod install restores it.
 # Plain commands, not a subshell: macOS bash 3.2 does not run the ERR trap when a subshell fails.
@@ -120,10 +129,4 @@ cd "$ios_dir"
 xcodegen generate --quiet
 pod install --silent
 trap - ERR
-
-echo "Installed species model v$model_version into ${models_dir#"$ios_dir/"}."
-if (( previous_version > model_version )); then
-    # An incremental build leaves the old traits-v$previous_version files in the built app, and
-    # the app loads the highest version it finds.
-    echo "Clean build after installing a lower version: v$previous_version was installed before (Xcode: Product > Clean Build Folder)."
-fi
+echo "Regenerated the Xcode project."
