@@ -14,6 +14,7 @@ def make_record(**overrides) -> ImageRecord:
         "license": "cc-by",
         "attribution": "(c) Someone, some rights reserved (CC BY)",
         "label_source": "inaturalist research-grade observation 10",
+        "label_status": "verified",
         "labelled_on": "2025-08-01",
         "sha256": "a" * 64,
     }

@@ -10,7 +10,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from sorghum_model.downloads import PhotoToDownload, get_json
-from sorghum_model.manifest import ALLOWED_LICENSES
+from sorghum_model.manifest import ALLOWED_LICENSES, LabelStatus
 
 INAT_OBSERVATIONS_URL = "https://api.inaturalist.org/v1/observations"
 
@@ -83,6 +83,7 @@ def select_photos(
                     "license": license_code,
                     "attribution": photo.get("attribution", ""),
                     "label_source": f"inaturalist research-grade observation {observation['id']}",
+                    "label_status": LabelStatus.VERIFIED,
                     "labelled_on": observation.get("observed_on") or "",
                 },
             )

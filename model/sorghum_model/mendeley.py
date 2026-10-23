@@ -15,7 +15,12 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from sorghum_model.dataset_layout import extract_zip, sorghum_disease_path, sorghum_weed_path
+from sorghum_model.dataset_layout import (
+    extract_zip,
+    safe_file_name,
+    sorghum_disease_path,
+    sorghum_weed_path,
+)
 from sorghum_model.downloads import download_file, get_json
 from sorghum_model.manifest import ALLOWED_LICENSES, normalize_license_code
 
@@ -124,7 +129,7 @@ def download_and_lay_out(
         for file in files:
             if not file["filename"].lower().endswith(".zip"):
                 continue
-            archive = dataset_root / "archives" / file["filename"]
+            archive = dataset_root / "archives" / safe_file_name(file["filename"])
             download_file(
                 file["content_details"]["download_url"],
                 archive,

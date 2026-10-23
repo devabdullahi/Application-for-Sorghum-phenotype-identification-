@@ -5,12 +5,16 @@ re-locate the photo, check it has not changed (sha256), credit its author, and t
 labelled it.
 """
 
+import contextlib
 import csv
 import hashlib
+import os
 import re
+import time
 import urllib.parse
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import asdict, dataclass, fields
+from enum import StrEnum
 from pathlib import Path
 
 from sorghum_model.species_classes import SPECIES_CLASS_NAMES
@@ -33,6 +37,24 @@ NON_COMMERCIAL_LICENSES: frozenset[str] = frozenset({"cc-by-nc", "cc-by-nc-sa"})
 KNOWN_LICENSE_CODES: frozenset[str] = ALLOWED_LICENSES | {"cc-by-nd", "cc-by-nc-nd"}
 
 
+class LabelStatus(StrEnum):
+    """Whether a photo's label may be trained on (CLAUDE.md: unverified labels are excluded)."""
+
+    VERIFIED = "verified"
+    """Checked by people (iNaturalist research grade, GBIF identifiers, dataset annotators,
+    our team) or confirmed by the BioCLIP 2 review (`label_review.py`)."""
+
+    UNREVIEWED = "unreviewed"
+    """Assigned by a category or a text search only (Wikimedia Commons, Flickr). Excluded
+    from split, train and export until `sorghum-model review-labels` verifies it."""
+
+
+# MIGRATION (drop once every committed manifest has a `label_status` column): manifests
+# written before the column existed are read with this rule. Only Commons and Flickr labels
+# come from a category or a text search; every other source's labels were checked by people.
+LEGACY_UNREVIEWED_SOURCES: frozenset[str] = frozenset({"commons", "flickr"})
+
+
 @dataclass(frozen=True)
 class ImageRecord:
     """One labelled training photo.
@@ -48,6 +70,7 @@ class ImageRecord:
         license: licence code, one of ALLOWED_LICENSES.
         attribution: credit line required by the licence.
         label_source: who or what verified the label.
+        label_status: whether training may use the label (see LabelStatus).
         labelled_on: ISO date the label refers to (observation or annotation date).
         sha256: checksum of the image file.
     """
@@ -60,10 +83,19 @@ class ImageRecord:
     license: str
     attribution: str
     label_source: str
+    label_status: LabelStatus
     labelled_on: str
     sha256: str
 
     def __post_init__(self) -> None:
+        try:
+            # Frozen dataclass: the CSV gives a string, which is stored as the enum.
+            object.__setattr__(self, "label_status", LabelStatus(self.label_status))
+        except ValueError:
+            raise ValueError(
+                f"{self.source}/{self.source_id}: label_status {self.label_status!r} must be "
+                f"one of {[status.value for status in LabelStatus]}"
+            ) from None
         if self.class_name not in SPECIES_CLASS_NAMES:
             raise ValueError(f"{self.source}/{self.source_id}: unknown class {self.class_name!r}")
         if self.license not in ALLOWED_LICENSES:
@@ -80,20 +112,118 @@ MANIFEST_COLUMNS: tuple[str, ...] = tuple(f.name for f in fields(ImageRecord))
 
 
 def write_manifest(records: list[ImageRecord], path: Path) -> None:
-    """Writes records sorted by source and id, so re-running a download gives a stable diff."""
+    """Writes records sorted by source and id, so re-running a download gives a stable diff.
+
+    The rows go to a temporary file that then replaces the manifest in one step, so a crash
+    or a full disk mid-write never leaves a truncated manifest behind.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     ordered = sorted(records, key=lambda r: (r.source, r.source_id))
-    with path.open("w", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=MANIFEST_COLUMNS)
-        writer.writeheader()
-        for record in ordered:
-            writer.writerow(asdict(record))
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        with temporary.open("w", newline="", encoding="utf-8") as file:
+            writer = csv.DictWriter(file, fieldnames=MANIFEST_COLUMNS)
+            writer.writeheader()
+            for record in ordered:
+                writer.writerow(asdict(record))
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def read_manifest(path: Path) -> list[ImageRecord]:
-    """Reads and validates a manifest written by write_manifest."""
+    """Reads and validates a manifest written by write_manifest.
+
+    Rows without `label_status` (manifests from before the column) get it from
+    LEGACY_UNREVIEWED_SOURCES.
+    """
     with path.open(newline="", encoding="utf-8") as file:
-        return [ImageRecord(**row) for row in csv.DictReader(file)]
+        records = []
+        for row in csv.DictReader(file):
+            if not row.get("label_status"):
+                row["label_status"] = (
+                    LabelStatus.UNREVIEWED
+                    if row.get("source") in LEGACY_UNREVIEWED_SOURCES
+                    else LabelStatus.VERIFIED
+                )
+            records.append(ImageRecord(**row))
+        return records
+
+
+def verified_records(records: Iterable[ImageRecord]) -> list[ImageRecord]:
+    """The records whose labels training may use; split, train and export see only these."""
+    return [record for record in records if record.label_status is LabelStatus.VERIFIED]
+
+
+# An empty lock file younger than this is treated as held (its owner is still writing its
+# pid); an older one is a leftover.
+FRESH_LOCK_SECONDS = 10.0
+
+
+class ManifestLockedError(ValueError):
+    """Another live process is writing the same manifest."""
+
+
+@contextlib.contextmanager
+def manifest_lock(manifest: Path) -> Iterator[None]:
+    """Holds `<manifest>.lock` while one process writes the manifest.
+
+    Two processes on one source would each replace the other's rows and race on the same
+    photo files, so a second one is refused. The lock file holds the owner's pid; a lock left
+    by a process that no longer runs (killed, crashed) is taken over. Only one machine writes
+    the data drive, so a pid check is enough.
+    """
+    lock = manifest.with_name(manifest.name + ".lock")
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    while True:
+        try:
+            descriptor = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            break
+        except FileExistsError:
+            owner = _lock_owner(lock)
+            # An empty lock may be one another process created a moment ago and has not
+            # written its pid to yet.
+            is_being_created = owner is None and _age_seconds(lock) < FRESH_LOCK_SECONDS
+            if is_being_created or (owner is not None and process_is_running(owner)):
+                raise ManifestLockedError(
+                    f"{manifest} is being written by process {owner or '(starting up)'}. "
+                    f"Run one process per source; if that process is gone, delete {lock}."
+                ) from None
+            # Stale: the owner died without cleaning up.
+            lock.unlink(missing_ok=True)
+    with os.fdopen(descriptor, "w") as file:
+        file.write(str(os.getpid()))
+    try:
+        yield
+    finally:
+        lock.unlink(missing_ok=True)
+
+
+def _age_seconds(path: Path) -> float:
+    try:
+        return time.time() - path.stat().st_mtime
+    except FileNotFoundError:
+        return 0.0
+
+
+def _lock_owner(lock: Path) -> int | None:
+    try:
+        return int(lock.read_text().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def process_is_running(pid: int) -> bool:
+    """Whether a process with this pid exists (signal 0 checks without signalling)."""
+    if pid == os.getpid():
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # exists, owned by another user
+    return True
 
 
 def merge_manifests(record_lists: list[list[ImageRecord]]) -> list[ImageRecord]:

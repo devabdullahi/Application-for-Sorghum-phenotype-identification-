@@ -33,7 +33,7 @@ def test_builds_record_with_plain_text_credit():
     assert fields["group_id"] == "commons-user-ann"
     assert fields["attribution"].startswith("(c) Ann & Bo, cc-by-sa-4.0, File:Sorghum field.jpg")
     assert fields["label_source"] == (
-        "wikimedia commons category 'Sorghum bicolor' (editor-assigned, unreviewed)"
+        "wikimedia commons category 'Sorghum bicolor' (editor-assigned)"
     )
     assert fields["labelled_on"] == "2019-08-02"
 
@@ -73,3 +73,18 @@ def test_follows_continuation_without_subcategories(monkeypatch):
     assert requests[0]["gcmtitle"] == "Category:Zea mays"
     assert requests[0]["gcmtype"] == "file"
     assert requests[1]["gcmcontinue"] == "next"
+
+
+def test_skips_files_imported_from_inaturalist_or_flickr():
+    from_inat = _page(Credit='<a href="https://www.inaturalist.org/photos/123">iNaturalist</a>')
+    assert select_photo(from_inat, "sorghum_bicolor", "Sorghum bicolor") is None
+    from_flickr = _page(Artist='<a href="https://www.flickr.com/people/ann">Ann</a>')
+    assert select_photo(from_flickr, "sorghum_bicolor", "Sorghum bicolor") is None
+    by_bot = _page()
+    by_bot["imageinfo"][0]["user"] = "Flickr upload bot"
+    assert select_photo(by_bot, "sorghum_bicolor", "Sorghum bicolor") is None
+
+
+def test_own_uploads_are_kept_and_unreviewed():
+    fields = select_photo(_page(Credit="Own work"), "sorghum_bicolor", "Sorghum bicolor").record_without_file
+    assert fields["label_status"] == "unreviewed"

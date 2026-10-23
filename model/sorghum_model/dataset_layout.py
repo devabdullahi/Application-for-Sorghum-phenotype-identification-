@@ -11,6 +11,7 @@ archive entry ("../../x") cannot write outside the images folder.
 """
 
 import hashlib
+import os
 import re
 import shutil
 import zipfile
@@ -30,6 +31,10 @@ SORGHUM_WEED_CLASSES: dict[str, str] = {
 
 # GrainSet names each kernel "Grainset_<crop>_<capture time>_<kernel>_p600s.png". Kernels
 # with the same capture time were imaged in one session from one sample, so they form a group.
+# Checked on the real v2 archives on 2026-10-23: sorghum.zip has 102,750 kernel images (plus
+# as many masks under "sorg/mask/", skipped) in 3,316 capture sessions of 12-55 kernels;
+# maize.zip has 19,000 kernels in 3,324 sessions of 1-15. Every name carries a capture time,
+# so grouping is per session, never per kernel.
 GRAINSET_CAPTURE_TIME = re.compile(r"_(\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})_")
 
 
@@ -113,11 +118,23 @@ def extract_zip(
             if destination.exists():
                 continue
             destination.parent.mkdir(parents=True, exist_ok=True)
-            partial = destination.with_name(destination.name + ".part")
+            partial = destination.with_name(f"{destination.name}.{os.getpid()}.part")
             with archive.open(entry) as source, partial.open("wb") as target:
                 shutil.copyfileobj(source, target)
             partial.rename(destination)
     return len(mapped)
+
+
+def safe_file_name(name: str) -> str:
+    """The last component of a file name a remote API gave us, refusing one that is unsafe.
+
+    Used where the name becomes a local path (Mendeley archive names), so "../x" or "/etc/x"
+    can never write outside the target folder.
+    """
+    base = PurePosixPath(name.replace("\\", "/")).name
+    if base in ("", ".", "..") or base.startswith("."):
+        raise ValueError(f"unsafe file name from the dataset API: {name!r}")
+    return base
 
 
 def _is_photo(path: PurePosixPath) -> bool:

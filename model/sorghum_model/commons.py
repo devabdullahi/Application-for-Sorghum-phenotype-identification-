@@ -16,7 +16,7 @@ import re
 from collections.abc import Iterator
 
 from sorghum_model.downloads import PhotoToDownload, get_json
-from sorghum_model.manifest import ALLOWED_LICENSES, normalize_license_code
+from sorghum_model.manifest import ALLOWED_LICENSES, LabelStatus, normalize_license_code
 
 COMMONS_API_URL = "https://commons.wikimedia.org/w/api.php"
 
@@ -26,6 +26,13 @@ THUMBNAIL_WIDTH_PX = 500
 
 # Largest page of category members the API returns to a client without bot rights.
 FILES_PER_PAGE = 50
+
+# Commons holds many bulk imports from iNaturalist and Flickr. Those photos are downloaded
+# from their own source already (or may be), and the same photo under two sources would leak
+# across splits, so a file is skipped when its uploader, credit or author names either site.
+# The import tools (iNaturalist2Commons, the Flickr upload bot, Flickr2Commons) all write the
+# original's URL into "Credit" or "Artist".
+REUPLOADED_FROM_MARKERS: tuple[str, ...] = ("inaturalist", "flickr")
 
 # Photo formats only. Commons categories also hold SVG drawings, PDFs, TIFF scans and videos.
 PHOTO_MIME_TYPES: frozenset[str] = frozenset({"image/jpeg", "image/png"})
@@ -47,7 +54,7 @@ def fetch_category_files(category: str, max_files: int) -> Iterator[dict]:
         "prop": "imageinfo",
         "iiprop": "url|mime|user|timestamp|extmetadata",
         "iiurlwidth": THUMBNAIL_WIDTH_PX,
-        "iiextmetadatafilter": "License|LicenseShortName|Artist|DateTimeOriginal",
+        "iiextmetadatafilter": "License|LicenseShortName|Artist|Credit|DateTimeOriginal",
     }
     yielded = 0
     while yielded < max_files:
@@ -76,7 +83,7 @@ def select_photo(page: dict, class_name: str, category: str) -> PhotoToDownload 
     # the fallback for files whose template does not set it.
     license_text = _metadata_value(metadata, "License") or _metadata_value(metadata, "LicenseShortName")
     license_code = normalize_license_code(license_text)
-    if license_code not in ALLOWED_LICENSES:
+    if license_code not in ALLOWED_LICENSES or is_reupload(info, metadata):
         return None
 
     page_id = str(page["pageid"])
@@ -99,10 +106,19 @@ def select_photo(page: dict, class_name: str, category: str) -> PhotoToDownload 
             "group_id": f"commons-user-{uploader.lower()}",
             "license": license_code,
             "attribution": f"(c) {author}, {license_text}, {page.get('title', '')} on Wikimedia Commons",
-            "label_source": f"wikimedia commons category '{category}' (editor-assigned, unreviewed)",
+            "label_source": f"wikimedia commons category '{category}' (editor-assigned)",
+            "label_status": LabelStatus.UNREVIEWED,
             "labelled_on": labelled_on,
         },
     )
+
+
+def is_reupload(info: dict, metadata: dict) -> bool:
+    """Whether a Commons file is a copy of an iNaturalist or Flickr photo."""
+    provenance = " ".join(
+        (info.get("user") or "", _metadata_value(metadata, "Credit"), _metadata_value(metadata, "Artist"))
+    ).lower()
+    return any(marker in provenance for marker in REUPLOADED_FROM_MARKERS)
 
 
 def _metadata_value(metadata: dict, key: str) -> str:

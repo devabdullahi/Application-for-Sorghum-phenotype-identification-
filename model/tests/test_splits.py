@@ -52,4 +52,4 @@ def test_split_manifest_round_trips(tmp_path):
     splits = split_records(records, 0.15, 0.15, "s")
     path = tmp_path / "splits.csv"
     write_split_manifest(records, splits, path)
-    assert read_split_manifest(path) == splits
+    assert read_split_manifest(path) == (splits, set())

@@ -15,6 +15,12 @@ dependencies = [
 train = [
     "tensorflow>=2.18,<2.21",
 ]
+# Only `review-labels` needs PyTorch and open_clip (BioCLIP 2 zero-shot). Kept apart from
+# `train` so the TensorFlow environment does not also carry PyTorch.
+review = [
+    "torch>=2.4",
+    "open_clip_torch>=2.32",
+]
 
 [project.scripts]
 sorghum-model = "sorghum_model.cli:main"

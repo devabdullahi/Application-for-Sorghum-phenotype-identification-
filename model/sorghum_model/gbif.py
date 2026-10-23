@@ -14,7 +14,7 @@ import hashlib
 from collections.abc import Iterator
 
 from sorghum_model.downloads import PhotoToDownload, get_json
-from sorghum_model.manifest import ALLOWED_LICENSES, normalize_license_code
+from sorghum_model.manifest import ALLOWED_LICENSES, LabelStatus, normalize_license_code
 
 GBIF_OCCURRENCE_SEARCH_URL = "https://api.gbif.org/v1/occurrence/search"
 
@@ -25,6 +25,22 @@ GBIF_IMAGE_CACHE_URL = "https://api.gbif.org/v1/image/cache/500x/occurrence/{key
 
 # iNaturalist's research-grade dataset on GBIF; `inat.py` downloads it directly.
 INATURALIST_DATASET_KEY = "50c9509d-22c7-4a22-a47d-8c48425ef4a7"
+
+# "Pl@ntNet automatically identified occurrences": GBIF lists them as HUMAN_OBSERVATION, but
+# the dataset description says the species was named by Pl@ntNet's classifier alone. A model's
+# guess is not a verified label, so the dataset is skipped (checked on api.gbif.org 2026-10-23).
+PLANTNET_AUTOMATIC_DATASET_KEY = "14d5676a-2c54-4f94-9023-1e8dcd822aa0"
+
+DATASETS_SKIPPED: frozenset[str] = frozenset({INATURALIST_DATASET_KEY, PLANTNET_AUTOMATIC_DATASET_KEY})
+
+# Citizen-science portals that publish to GBIF, named in the label source so their rows can
+# be found (and dropped) later. Pl@ntNet's "observations" set holds species names its
+# community or its review considers valid; observation.org records are checked by its
+# volunteer validators. Keys checked on api.gbif.org 2026-10-23.
+PORTAL_DATASET_NAMES: dict[str, str] = {
+    "7a3679ef-5582-4aaa-81f0-8c2545cafc81": "Pl@ntNet observations",
+    "8a863029-f435-446a-821e-275f4f641165": "observation.org",
+}
 
 # Record licences GBIF can filter on. GBIF only publishes these three; a record's photos
 # may still carry their own, stricter licence, which `select_photos` checks per photo.
@@ -50,8 +66,8 @@ def fetch_occurrences(
 ) -> Iterator[dict]:
     """Yields occurrences of a taxon that have a still image and an allowed record licence.
 
-    Records from the iNaturalist dataset are skipped here, not in the query, because the
-    search API has no "not this dataset" filter.
+    Records from DATASETS_SKIPPED are dropped here, not in the query, because the search API
+    has no "not this dataset" filter.
     """
     offset = 0
     yielded = 0
@@ -68,7 +84,7 @@ def fetch_occurrences(
             },
         )
         for occurrence in page["results"]:
-            if occurrence.get("datasetKey") == INATURALIST_DATASET_KEY:
+            if occurrence.get("datasetKey") in DATASETS_SKIPPED:
                 continue
             yield occurrence
             yielded += 1
@@ -90,7 +106,7 @@ def select_photos(
     well-photographed specimen does not outweigh many plants.
     """
     basis = occurrence.get("basisOfRecord")
-    if basis not in HUMAN_IDENTIFIED_BASES:
+    if basis not in HUMAN_IDENTIFIED_BASES or occurrence.get("datasetKey") in DATASETS_SKIPPED:
         return []
     record_license = occurrence.get("license") or ""
     selected = []
@@ -117,10 +133,8 @@ def select_photos(
                     "group_id": f"gbif-{_group_name(occurrence)}",
                     "license": license_code,
                     "attribution": _attribution(media, occurrence, license_code),
-                    "label_source": (
-                        f"gbif {basis.lower()} occurrence {occurrence_key} "
-                        f"(dataset {occurrence.get('datasetKey', 'unknown')})"
-                    ),
+                    "label_source": _label_source(occurrence, basis),
+                    "label_status": LabelStatus.VERIFIED,
                     "labelled_on": _date_only(
                         occurrence.get("dateIdentified") or occurrence.get("eventDate")
                     ),
@@ -128,6 +142,13 @@ def select_photos(
             )
         )
     return selected
+
+
+def _label_source(occurrence: dict, basis: str) -> str:
+    dataset_key = occurrence.get("datasetKey", "unknown")
+    portal = PORTAL_DATASET_NAMES.get(dataset_key)
+    dataset = f"{portal}, dataset {dataset_key}" if portal else f"dataset {dataset_key}"
+    return f"gbif {basis.lower()} occurrence {occurrence['key']} ({dataset})"
 
 
 def _group_name(occurrence: dict) -> str:

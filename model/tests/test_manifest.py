@@ -1,8 +1,15 @@
+import os
+
 import pytest
 
 from conftest import make_record
 from sorghum_model.manifest import (
+    MANIFEST_COLUMNS,
+    LabelStatus,
+    ManifestLockedError,
     license_summary,
+    manifest_lock,
+    verified_records,
     merge_manifests,
     normalize_license_code,
     read_manifest,
@@ -86,3 +93,71 @@ def test_merge_drops_photo_with_conflicting_labels():
     maize = make_record(source="other", class_name="maize")
     unrelated = make_record(sha256="c" * 64)
     assert merge_manifests([[sorghum, unrelated], [maize]]) == [unrelated]
+
+
+def _write_legacy_manifest(path, rows):
+    # A manifest as written before the label_status column existed.
+    import csv
+
+    columns = [c for c in MANIFEST_COLUMNS if c != "label_status"]
+    with path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=columns)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({c: row[c] for c in columns})
+
+
+def test_legacy_rows_get_label_status_from_their_source(tmp_path):
+    from dataclasses import asdict
+
+    path = tmp_path / "old.csv"
+    rows = [
+        asdict(make_record(source="commons", source_id="1", sha256="1" * 64)),
+        asdict(make_record(source="flickr", source_id="2", sha256="2" * 64)),
+        asdict(make_record(source="gbif", source_id="3", sha256="3" * 64)),
+    ]
+    _write_legacy_manifest(path, rows)
+    statuses = {r.source: r.label_status for r in read_manifest(path)}
+    assert statuses == {
+        "commons": LabelStatus.UNREVIEWED,
+        "flickr": LabelStatus.UNREVIEWED,
+        "gbif": LabelStatus.VERIFIED,
+    }
+
+
+def test_label_status_round_trips_and_filters(tmp_path):
+    path = tmp_path / "m.csv"
+    verified = make_record(source_id="1", sha256="1" * 64)
+    unreviewed = make_record(source_id="2", sha256="2" * 64, label_status="unreviewed")
+    write_manifest([verified, unreviewed], path)
+    loaded = read_manifest(path)
+    assert [r.label_status for r in loaded] == [LabelStatus.VERIFIED, LabelStatus.UNREVIEWED]
+    assert verified_records(loaded) == [verified]
+
+
+def test_rejects_an_unknown_label_status():
+    with pytest.raises(ValueError, match="label_status"):
+        make_record(label_status="maybe")
+
+
+def test_write_leaves_no_temporary_file(tmp_path):
+    path = tmp_path / "m.csv"
+    write_manifest([make_record()], path)
+    assert [p.name for p in tmp_path.iterdir()] == ["m.csv"]
+
+
+def test_lock_refuses_a_second_live_process(tmp_path):
+    manifest = tmp_path / "species-gbif.csv"
+    (tmp_path / "species-gbif.csv.lock").write_text(str(os.getppid()))  # our parent is alive
+    with pytest.raises(ManifestLockedError, match="one process per source"):
+        with manifest_lock(manifest):
+            pass
+
+
+def test_lock_takes_over_a_stale_lock_and_releases_it(tmp_path):
+    manifest = tmp_path / "species-gbif.csv"
+    lock = tmp_path / "species-gbif.csv.lock"
+    lock.write_text("2000000000")  # no such process
+    with manifest_lock(manifest):
+        assert lock.read_text() == str(os.getpid())
+    assert not lock.exists()

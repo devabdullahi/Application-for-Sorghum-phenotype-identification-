@@ -26,7 +26,7 @@ def test_builds_unreviewed_record_grouped_by_owner():
     fields = select_photo(_photo(), "no_plant", "bare soil").record_without_file
     assert fields["license"] == "cc-by"
     assert fields["group_id"] == "flickr-owner-99@N01"
-    assert fields["label_source"] == "flickr search 'bare soil' (unreviewed)"
+    assert fields["label_source"] == "flickr search 'bare soil'"
     assert fields["labelled_on"] == "2021-03-04"
 
 

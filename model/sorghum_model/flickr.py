@@ -15,6 +15,7 @@ import os
 from collections.abc import Iterator
 
 from sorghum_model.downloads import PhotoToDownload, get_json
+from sorghum_model.manifest import LabelStatus
 
 FLICKR_API_URL = "https://api.flickr.com/services/rest/"
 FLICKR_API_KEY_VARIABLE = "FLICKR_API_KEY"
@@ -115,7 +116,8 @@ def select_photo(photo: dict, class_name: str, search_text: str) -> PhotoToDownl
             "group_id": f"flickr-owner-{photo.get('owner', 'unknown')}",
             "license": license_code,
             "attribution": f"(c) {owner}, {license_code}, flickr.com/photos/{photo.get('owner')}/{photo_id}",
-            "label_source": f"flickr search '{search_text}' (unreviewed)",
+            "label_source": f"flickr search '{search_text}'",
+            "label_status": LabelStatus.UNREVIEWED,
             "labelled_on": (photo.get("datetaken") or "")[:10],
         },
     )

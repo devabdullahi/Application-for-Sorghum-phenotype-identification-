@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
 
-from sorghum_model.manifest import ImageRecord, sha256_of_file
+from sorghum_model.manifest import ImageRecord, LabelStatus, sha256_of_file
 
 IMAGE_SUFFIXES: frozenset[str] = frozenset({".jpg", ".jpeg", ".png"})
 
@@ -67,6 +67,7 @@ def import_folder(folder: Path, data_root: Path, source: FolderSource) -> list[I
                 license=source.license,
                 attribution=source.attribution,
                 label_source=f"{source.source}; annotator {source.annotator}",
+                label_status=LabelStatus.VERIFIED,
                 labelled_on=source.labelled_on,
                 sha256=sha256_of_file(image),
             )

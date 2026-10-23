@@ -7,6 +7,7 @@ existing group to another split, and the committed split manifest stays valid.
 
 import csv
 import hashlib
+import os
 from collections import Counter
 from enum import Enum
 from pathlib import Path
@@ -18,6 +19,11 @@ class Split(Enum):
     TRAIN = "train"
     VALIDATION = "validation"
     TEST = "test"
+
+
+# Split-manifest value for a photo the near-duplicate pass dropped (`near_duplicates.py`).
+# Listed so train and export can tell "dropped on purpose" from "added after the split".
+EXCLUDED = "excluded"
 
 
 SPLIT_COLUMNS: tuple[str, ...] = ("sha256", "source", "source_id", "group_id", "split")
@@ -78,25 +84,45 @@ def find_undersized_classes(
     return problems
 
 
-def write_split_manifest(records: list[ImageRecord], splits: dict[str, Split], path: Path) -> None:
-    """Writes the committed split manifest, sorted for stable diffs."""
+def write_split_manifest(
+    records: list[ImageRecord],
+    splits: dict[str, Split],
+    path: Path,
+    excluded: list[ImageRecord] = (),
+) -> None:
+    """Writes the committed split manifest, sorted for stable diffs.
+
+    `excluded` photos are listed with split "excluded". The file is replaced in one step.
+    """
+    rows = [(record, splits[record.sha256].value) for record in records]
+    rows += [(record, EXCLUDED) for record in excluded]
+    rows.sort(key=lambda row: (row[0].source, row[0].source_id))
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as file:
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    with temporary.open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=SPLIT_COLUMNS)
         writer.writeheader()
-        for record in sorted(records, key=lambda r: (r.source, r.source_id)):
+        for record, split in rows:
             writer.writerow(
                 {
                     "sha256": record.sha256,
                     "source": record.source,
                     "source_id": record.source_id,
                     "group_id": record.group_id,
-                    "split": splits[record.sha256].value,
+                    "split": split,
                 }
             )
+    os.replace(temporary, path)
 
 
-def read_split_manifest(path: Path) -> dict[str, Split]:
-    """Reads a split manifest written by write_split_manifest, keyed by sha256."""
+def read_split_manifest(path: Path) -> tuple[dict[str, Split], set[str]]:
+    """Reads a split manifest: the split of every kept photo by sha256, and the excluded sha256s."""
+    splits: dict[str, Split] = {}
+    excluded: set[str] = set()
     with path.open(newline="", encoding="utf-8") as file:
-        return {row["sha256"]: Split(row["split"]) for row in csv.DictReader(file)}
+        for row in csv.DictReader(file):
+            if row["split"] == EXCLUDED:
+                excluded.add(row["sha256"])
+            else:
+                splits[row["sha256"]] = Split(row["split"])
+    return splits, excluded

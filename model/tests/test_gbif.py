@@ -97,3 +97,22 @@ def test_fetch_skips_inaturalist_and_pages_until_end(monkeypatch):
     assert requests[0]["license"] == ["CC0_1_0", "CC_BY_4_0", "CC_BY_NC_4_0"]
     assert "FOSSIL_SPECIMEN" not in requests[0]["basisOfRecord"]
     assert "MACHINE_OBSERVATION" not in requests[0]["basisOfRecord"]
+
+
+def test_skips_plantnet_machine_identified_records():
+    occurrence = _occurrence(
+        _media(), basisOfRecord="HUMAN_OBSERVATION", datasetKey=gbif.PLANTNET_AUTOMATIC_DATASET_KEY
+    )
+    assert select_photos(occurrence, "sorghum_bicolor", 2) == []
+
+
+def test_names_citizen_science_portals_in_the_label_source():
+    occurrence = _occurrence(
+        _media(), basisOfRecord="HUMAN_OBSERVATION", datasetKey="8a863029-f435-446a-821e-275f4f641165"
+    )
+    fields = select_photos(occurrence, "sorghum_bicolor", 2)[0].record_without_file
+    assert fields["label_source"] == (
+        "gbif human_observation occurrence 42 "
+        "(observation.org, dataset 8a863029-f435-446a-821e-275f4f641165)"
+    )
+    assert fields["label_status"] == "verified"

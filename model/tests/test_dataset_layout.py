@@ -3,6 +3,7 @@ import zipfile
 import pytest
 
 from sorghum_model.dataset_layout import (
+    safe_file_name,
     extract_zip,
     grainset_path,
     sequence_block,
@@ -82,3 +83,26 @@ def test_extract_zip_sample_is_stable_and_grows(tmp_path):
 
     assert len(sample(3)) == 3
     assert sample(3) <= sample(6)
+
+
+def test_extract_zip_never_writes_outside_the_images_folder(tmp_path):
+    archive_path = tmp_path / "evil.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("../../escaped.jpg", b"x")
+        archive.writestr("SorghumWeedDataset_Classification/Train/Class0_Sorghum/../../../../up.jpg", b"x")
+        archive.writestr("SorghumWeedDataset_Classification/Train/Class0_Sorghum/ok (1).jpg", b"x")
+    images_root = tmp_path / "data" / "images"
+    extract_zip(archive_path, images_root, lambda name: sorghum_weed_path(name, 20))
+    written = [p for p in tmp_path.rglob("*.jpg") if p != archive_path]
+    assert written and all(p.is_relative_to(images_root) for p in written)
+
+
+@pytest.mark.parametrize("name", ["..", "", "a/..", ".hidden.zip"])
+def test_safe_file_name_refuses_traversal_and_hidden_names(name):
+    with pytest.raises(ValueError, match="unsafe"):
+        safe_file_name(name)
+
+
+def test_safe_file_name_keeps_only_the_last_component():
+    assert safe_file_name("folder\\sub/SorghumWeed.zip") == "SorghumWeed.zip"
+    assert safe_file_name("../../x.zip") == "x.zip"

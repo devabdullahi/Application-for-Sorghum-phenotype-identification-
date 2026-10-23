@@ -5,15 +5,23 @@ import urllib.error
 import pytest
 
 from sorghum_model import downloads
-from sorghum_model.downloads import RequestPacer, download_file, get_json
+import email.utils
+import os
+from pathlib import Path
+
+from sorghum_model.downloads import RequestPacer, download_file, get_json, partial_path, retry_after_seconds
 
 
 class _Response(io.BytesIO):
-    """Stands in for an HTTP response: readable bytes, a status and a context manager."""
+    """Stands in for an HTTP response: readable bytes, a status, headers and a context manager.
 
-    def __init__(self, body: bytes, status: int = 200):
+    Content-Length defaults to the body's length, as a real server sends it.
+    """
+
+    def __init__(self, body: bytes, status: int = 200, content_length: int | None = None):
         super().__init__(body)
         self.status = status
+        self.headers = {"Content-Length": str(len(body) if content_length is None else content_length)}
 
 
 @pytest.fixture(autouse=True)
@@ -155,3 +163,103 @@ def test_download_retry_continues_after_a_dropped_connection(tmp_path, monkeypat
     download_file("https://files.example/big.zip", destination)
     assert calls == [None, "bytes=6-"]
     assert destination.read_bytes() == b"first-second"
+
+
+def test_short_body_is_resumed_instead_of_accepted(tmp_path, monkeypatch):
+    # urllib returns a short body silently when the connection drops; the length check must
+    # turn that into a retry that resumes from the bytes already saved.
+    destination = tmp_path / "a.zip"
+    calls = []
+
+    def fake_urlopen(request, timeout):
+        calls.append(request.get_header("Range"))
+        if len(calls) == 1:
+            return _Response(b"hel", content_length=11)
+        return _Response(b"lo world", status=206)
+
+    monkeypatch.setattr(downloads.urllib.request, "urlopen", fake_urlopen)
+    download_file("https://files.example/a.zip", destination)
+    assert calls == [None, "bytes=3-"]
+    assert destination.read_bytes() == b"hello world"
+
+
+def test_partial_file_name_carries_the_process_id(tmp_path, monkeypatch):
+    seen = []
+
+    def fake_urlopen(request, timeout):
+        return _Response(b"data")
+
+    original_rename = Path.rename
+
+    def recording_rename(self, target):
+        seen.append(self.name)
+        return original_rename(self, target)
+
+    monkeypatch.setattr(downloads.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(Path, "rename", recording_rename)
+    download_file("https://files.example/a.jpg", tmp_path / "a.jpg")
+    assert seen == [f"a.jpg.{os.getpid()}.part"]
+
+
+def test_adopts_the_part_of_a_process_that_ended(tmp_path, monkeypatch):
+    destination = tmp_path / "big.zip"
+    dead_pid = 2_000_000_000  # above any real pid
+    (tmp_path / f"big.zip.{dead_pid}.part").write_bytes(b"first-")
+    ranges = []
+
+    def fake_urlopen(request, timeout):
+        ranges.append(request.get_header("Range"))
+        return _Response(b"second", status=206)
+
+    monkeypatch.setattr(downloads.urllib.request, "urlopen", fake_urlopen)
+    download_file("https://files.example/big.zip", destination)
+    assert ranges == ["bytes=6-"]
+    assert destination.read_bytes() == b"first-second"
+
+
+def test_leaves_the_part_of_a_running_process_alone(tmp_path, monkeypatch):
+    destination = tmp_path / "big.zip"
+    running = tmp_path / f"big.zip.{os.getppid()}.part"  # our parent is alive
+    running.write_bytes(b"theirs")
+    monkeypatch.setattr(
+        downloads.urllib.request, "urlopen", lambda request, timeout: _Response(b"mine")
+    )
+    download_file("https://files.example/big.zip", destination)
+    assert destination.read_bytes() == b"mine"
+    assert running.read_bytes() == b"theirs"
+    assert not partial_path(destination).exists()
+
+
+def test_rate_limit_waits_as_long_as_retry_after_asks(monkeypatch):
+    slept = []
+    monkeypatch.setattr(downloads.time, "sleep", slept.append)
+    responses = iter(
+        [urllib.error.HTTPError("u", 429, "slow down", {"Retry-After": "120"}, None),
+         _Response(b"{}")]
+    )
+
+    def fake_urlopen(request, timeout):
+        response = next(responses)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    monkeypatch.setattr(downloads.urllib.request, "urlopen", fake_urlopen)
+    get_json("https://api.example")
+    assert slept == [120.0]  # longer than the first default wait of 10 s
+
+
+def test_gives_up_when_retry_after_is_unreasonably_long(monkeypatch):
+    def fake_urlopen(request, timeout):
+        raise urllib.error.HTTPError("u", 429, "come back tomorrow", {"Retry-After": "86400"}, None)
+
+    monkeypatch.setattr(downloads.urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(urllib.error.HTTPError):
+        get_json("https://api.example")
+
+
+def test_parses_retry_after_seconds_and_dates():
+    assert retry_after_seconds("30") == 30.0
+    assert retry_after_seconds(email.utils.formatdate(1_000_090, usegmt=True), now=1_000_000) == 90.0
+    assert retry_after_seconds("soon") is None
+    assert retry_after_seconds(None) is None

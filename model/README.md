@@ -24,7 +24,7 @@ tool downloads photos.
   splits, calibration maths, metadata format, training and INT8 export code, unit tests.
 - Verified: unit tests pass; every source except Flickr (no key yet) was smoke-tested against
   its live API on 2026-10-23.
-- **Not yet run:** `train` and `export`. Expect small fixes on the first real run.
+- **Not yet run:** `train` and `export` on real data. Expect small fixes on the first run.
 - **Short classes:** finger millet and `no_plant` (see [Data reality](#data-reality)).
 
 ## Decisions behind this code
@@ -42,19 +42,48 @@ tool downloads photos.
   photo's attribution is kept in the manifest. The exported `traits-vN.json` lists the licence
   codes used under `trainingData.licenses` and sets `trainingData.nonCommercial` when any NC
   photo was used. Nothing else in the file changes, so the app's contract is unchanged.
-- **Label quality differs by source.** iNaturalist research grade (two thirds of identifiers
-  agree), GBIF human-identified records and the public datasets (labelled by their authors)
-  count as verified. Wikimedia Commons categories and Flickr searches are **unreviewed**, and
-  their `label_source` says so; review them or filter them with BioCLIP 2 before training.
+- **Label quality differs by source**, and every manifest row has a `label_status`
+  (`verified` or `unreviewed`). iNaturalist research grade (two thirds of identifiers agree),
+  GBIF human-identified records and the public datasets (labelled by their authors) are
+  `verified`. Wikimedia Commons categories and Flickr searches are `unreviewed`. **`split`,
+  `train` and `export` drop unreviewed rows**; `review-labels` can verify them.
+- **BioCLIP 2 review** (`review-labels`, `label_review.py`). **ASSUMPTION — confirm:** a
+  zero-shot BioCLIP 2 (imageomics/bioclip-2) agreement counts as label verification. A plant
+  row is verified when BioCLIP's top class is the row's class with probability >= 0.5; a
+  `no_plant` row when the summed probability of all plant classes is < 0.2 (prompts "bare
+  soil", "wooden board", "human hand", ...). Both thresholds are initial guesses in
+  `LabelReviewSettings`. The verdict is appended to `label_source` ("bioclip-2 agreement
+  p=0.91"); rows BioCLIP disagrees with stay unreviewed.
+- **Migration rule (temporary):** manifests written before `label_status` existed are read
+  with `commons` and `flickr` rows as unreviewed and every other source as verified
+  (`LEGACY_UNREVIEWED_SOURCES`). Drop the rule once every committed manifest has the column.
+- **GBIF portals:** Pl@ntNet's "automatically identified occurrences" dataset is **skipped**:
+  GBIF lists it as human observation, but its names come from Pl@ntNet's classifier alone.
+  Pl@ntNet "observations" and observation.org records are kept and named in `label_source`.
+- **Duplicates across sources:** Commons files imported from iNaturalist or Flickr are
+  skipped on download. At split time a 64-bit dHash finds near-duplicates across all sources
+  (Hamming distance <= 4, `SplitSettings`): same-class copies put their groups together into
+  one group, copies with different labels are both dropped (listed as `excluded` in the split
+  manifest).
+- **Ship bar** (`ExportSettings`): held-out sorghum-vs-not accuracy >= 0.90 and
+  |float - INT8| accuracy <= 0.02. `export` refuses (exit 1, nothing written) below the bar,
+  unless `--allow-below-bar`, which is for diagnostic exports only and sets `belowBar: true`
+  in the metadata.
 - **Framework:** TensorFlow/Keras, for its built-in INT8 TFLite converter.
-- **BioCLIP 2** label cleaning (recommended by the research) is a later, optional step.
 
 ## Photo sources
 
 Each source has one module and one command, and writes its own manifest
-(`manifests/species-<source>.csv`), so downloads can run in parallel. Every command is
-resumable: files already on disk are not fetched again. All requests send a User-Agent naming
-the project, are paced at about one per second and retry transient errors (`downloads.py`).
+(`manifests/species-<source>.csv`), so different sources can download in parallel. Every
+command is resumable: files already on disk are not fetched again, a half-downloaded file
+continues where it stopped, and manifest rows are saved every 200 photos and whenever a run
+ends. All requests send a User-Agent naming the project, are paced at about one per second,
+retry transient errors and honour a 429 `Retry-After` (`downloads.py`).
+
+**Run one process per source, and so one per host.** Pacing is per process, so two runs
+against one API would double the rate. A lock file next to the manifest
+(`species-<source>.csv.lock`) refuses a second process on the same source; a lock left by a
+killed process is taken over automatically.
 
 | Source | Command | Classes | Group (for splitting) | Key |
 |---|---|---|---|---|
@@ -82,6 +111,9 @@ Notes:
   <https://www.flickr.com/services/apps/create/> and `export FLICKR_API_KEY=...`; without it
   the command stops with that instruction. Pl@ntNet and observation.org photos already
   arrive through GBIF, so they need no separate client.
+- **GrainSet grouping** was checked on the real archives (2026-10-23): 102,750 sorghum
+  kernels in 3,316 capture sessions (12-55 kernels each) and 19,000 maize kernels in 3,324
+  sessions (1-15). Groups are capture sessions, never single kernels.
 
 ## Data reality
 
@@ -118,8 +150,12 @@ Needs [uv](https://docs.astral.sh/uv/). TensorFlow needs Python 3.11 or 3.12.
 cd model
 uv sync --python 3.12                 # data tools and tests (small)
 uv sync --python 3.12 --extra train   # adds TensorFlow (~1.5 GB) for train/export
+uv sync --python 3.12 --extra review  # adds PyTorch + open_clip for review-labels
 uv run pytest
 ```
+
+`review-labels` downloads BioCLIP 2's weights (~1.7 GB) into `HF_HOME` on first use. Keep
+`HF_HOME`, `UV_CACHE_DIR` and `TMPDIR` on the data drive if the system disk is small.
 
 ## Workflow
 
@@ -147,7 +183,11 @@ uv run sorghum-model import-folder data/team/pearl_millet \
     --class pearl_millet --source team-photos --license cc-by \
     --attribution "Sorghum project team" --annotator "<name>" --labelled-on 2026-11-02
 
-# 3. Split by group (iNaturalist observer, plot or accession), never by image.
+#    Verify the unreviewed Commons/Flickr labels with BioCLIP 2 (needs the review extra).
+uv run sorghum-model review-labels
+
+# 3. Split by group (iNaturalist observer, plot or accession), never by image. Verified
+#    labels only; near-duplicates across sources are merged into one group or dropped.
 uv run sorghum-model split
 
 # 4. Train: frozen backbone, then fine-tune; keeps the best validation loss.
@@ -175,6 +215,10 @@ uv run sorghum-model export --run-dir runs/species-v1 --version 1 \
 | `dataset_layout.py` | Maps public-dataset files to `<class>/<group>/<file>` |
 | `local_import.py` | Folders of public-dataset or team photos; an annotator is required |
 | `splits.py` | Hash-based split by group; new photos never move an existing group |
+| `near_duplicates.py` | dHash near-duplicates across sources, merged into one group or dropped |
+| `label_review.py`, `bioclip_classifier.py` | BioCLIP 2 zero-shot review of unreviewed labels |
+| `ship_bar.py` | The export ship bar check |
+| `quantization.py` | Round-half-up input quantization and the logit step for parity fixtures |
 | `preprocessing.py` | EXIF upright, centre square crop, bilinear resize to 224 px |
 | `settings.py` | Every tunable value, with its reason and range checks |
 | `train.py` | Keras MobileNetV3-Small, class-balanced weights, light augmentation |
@@ -185,8 +229,13 @@ uv run sorghum-model export --run-dir runs/species-v1 --version 1 \
 ### Contract with `shared/`
 
 - **Input:** 224 x 224 RGB, uint8. `shared/` crops the centred square, resizes bilinearly,
-  then quantizes each 0-255 value with `q = v / scale + zeroPoint`, taking both from
+  then quantizes each 0-255 value with `q = v / scale + zeroPoint`, rounding half up
+  (Kotlin `roundToInt`; Python matches with `floor(x + 0.5)`), taking both from
   `input.quantization` in the JSON. MobileNetV3's own normalization is inside the model.
+- **Fixtures:** `expected.json` has a top-level `logitStep`, the quantization step of the
+  species logits (scale of the int8 tensor feeding the final DEQUANTIZE, or of an int8
+  output). If the model has no int8 logit tensor it has `logitParityMaxDelta` instead, the
+  largest float-vs-INT8 logit difference on the test split. `logitToleranceSource` says which.
 - **Output:** one float logits vector per head. Species logits follow the class order in
   `heads.species.classes`.
 - **Decision:** `shared/species` applies `softmax(logits / temperature)` and continues only
@@ -196,8 +245,8 @@ uv run sorghum-model export --run-dir runs/species-v1 --version 1 \
 ### ML hygiene this code enforces
 
 - Splits by group, never by image; the split manifest is committed.
-- Unverified labels are excluded: iNaturalist research grade only, and imports need an
-  annotator.
+- Unverified labels are excluded: `label_status` must be `verified` for split, train and
+  export; imports need an annotator.
 - INT8 is compared with float per head on the test split, and the numbers go into the
   metadata.
 - The temperature is fitted after quantization, on validation; ECE is reported before and
