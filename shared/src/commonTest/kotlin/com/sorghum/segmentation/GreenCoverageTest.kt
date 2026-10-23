@@ -1,4 +1,4 @@
-package com.sorghum.capture.sample
+package com.sorghum.segmentation
 
 import com.sorghum.imaging.Rgb
 import com.sorghum.imaging.pixelImage

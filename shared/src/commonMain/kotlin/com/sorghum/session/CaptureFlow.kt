@@ -10,10 +10,10 @@ import com.sorghum.capture.quality.PhotoSource
 import com.sorghum.capture.quality.QualitySettings
 import com.sorghum.capture.quality.RejectionReason
 import com.sorghum.capture.quality.checkPhotoQuality
-import com.sorghum.capture.sample.GreenDetectionSettings
-import com.sorghum.capture.sample.SampleCoverage
-import com.sorghum.capture.sample.measureSampleCoverage
 import com.sorghum.imaging.PixelImage
+import com.sorghum.segmentation.GreenDetectionSettings
+import com.sorghum.segmentation.SampleCoverage
+import com.sorghum.segmentation.measureSampleCoverage
 import com.sorghum.species.SpeciesCheck
 import com.sorghum.species.SpeciesGate
 

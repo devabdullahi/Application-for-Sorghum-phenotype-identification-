@@ -3,9 +3,9 @@ package com.sorghum.session
 import com.sorghum.capture.guidance.DeviceTilt
 import com.sorghum.capture.guidance.GuidanceState
 import com.sorghum.capture.quality.RejectionReason
-import com.sorghum.capture.sample.SampleCoverage
 import com.sorghum.imaging.Rgb
 import com.sorghum.imaging.uniformImage
+import com.sorghum.segmentation.SampleCoverage
 import com.sorghum.species.ImageModel
 import com.sorghum.species.SpeciesCheck
 import com.sorghum.species.SpeciesGate

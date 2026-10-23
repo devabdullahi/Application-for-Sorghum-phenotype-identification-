@@ -1,8 +1,8 @@
 package com.sorghum.capture.quality
 
-import com.sorghum.capture.sample.GreenDetectionSettings
-import com.sorghum.capture.sample.measureSampleCoverage
 import com.sorghum.imaging.PixelImage
+import com.sorghum.segmentation.GreenDetectionSettings
+import com.sorghum.segmentation.measureSampleCoverage
 
 /** Why a captured photo was rejected. Each reason maps to a specific message for the user. */
 enum class RejectionReason {

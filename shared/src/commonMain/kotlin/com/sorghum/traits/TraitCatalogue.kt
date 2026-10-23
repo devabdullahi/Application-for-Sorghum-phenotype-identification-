@@ -1,11 +1,6 @@
 package com.sorghum.traits
 
-/** Which board photo a trait is read from. Each photo type has its own capture and guidance. */
-enum class PhotoType {
-    LEAF,
-    PANICLE,
-    GRAIN,
-}
+import com.sorghum.imaging.PhotoType
 
 /** How a trait is read from its photo (ADR-0004). */
 enum class TraitMethod {

@@ -17,7 +17,7 @@ The rules below are specific to this repo. They add to coding_instructions.md an
 
 | Today | Target | Holds |
 |---|---|---|
-| `shared/.../capture/{frame,guidance,quality,sample}` | `shared/src/commonMain/kotlin/com/sorghum/{imaging,capture,segmentation,calibration,traits,reasoning,session}` | All logic |
+| `shared/.../capture/{frame,guidance,quality}`, `shared/.../segmentation` | `shared/src/commonMain/kotlin/com/sorghum/{imaging,capture,segmentation,calibration,traits,reasoning,session}` | All logic |
 | `app/.../ui`, `app/.../camera`, `MainActivity` | `androidApp/ui`, `androidApp/platform` | Compose, CameraX, gravity sensor, LiteRT runner, asset loader |
 | `ios/SorghumCapture` (links `Shared.framework`; Swift port removed) | `iosApp/UI`, `iosApp/Platform` | SwiftUI, AVFoundation, Core Motion, LiteRT runner, asset loader |
 | (none) | `model/` | Training, INT8 export, Genesys table builder, test fixtures |

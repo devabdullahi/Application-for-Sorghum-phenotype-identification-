@@ -3,10 +3,10 @@ package com.sorghum.capture.camera
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import com.sorghum.capture.frame.TargetFrame
-import com.sorghum.capture.sample.GreenDetectionSettings
-import com.sorghum.capture.sample.LIVE_ANALYSIS_LONG_SIDE_PIXELS
-import com.sorghum.capture.sample.SampleCoverage
-import com.sorghum.capture.sample.measureSampleCoverage
+import com.sorghum.segmentation.GreenDetectionSettings
+import com.sorghum.segmentation.LIVE_ANALYSIS_LONG_SIDE_PIXELS
+import com.sorghum.segmentation.SampleCoverage
+import com.sorghum.segmentation.measureSampleCoverage
 import java.util.concurrent.Executor
 
 /**
