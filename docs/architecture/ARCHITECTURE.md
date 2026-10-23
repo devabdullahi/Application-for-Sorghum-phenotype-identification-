@@ -98,7 +98,7 @@ Rules:
 
 | Module | Owns | Exists today as |
 | --- | --- | --- |
-| `imaging` | `PixelImage(width, height, rgb: ByteArray)`, `NormalizedRect`, `PixelRect`, crop/downscale/rotate on `PixelImage` | `frame/TargetFrame.kt` (rect types); Bitmap code in `camera/FrameCropper.kt` to be replaced |
+| `imaging` | `PixelImage(width, height, rgb: ByteArray)`, `NormalizedRect`, `PixelRect`, crop/downscale/rotate on `PixelImage` | `imaging/ImageRects.kt` (rect types); Bitmap code in `camera/FrameCropper.kt` to be replaced |
 | `capture` | Target frame, frame mapping, tilt → guidance state, steady-hold timer, photo quality check | `frame/`, `guidance/`, `quality/` |
 | `segmentation` | Plant mask by excess-green (leaves); background-contrast mask vs plain board (panicles, grain); sample coverage + edge touch | `sample/GreenCoverage.kt`; contrast mask is new |
 | `species` | Map the model's species head to `SpeciesEstimate` (sorghum / named look-alike / other plant / no plant); decide continue, "not sorghum", or "unsure — retake" against a calibrated threshold from model metadata | New (ADR-0006) |
