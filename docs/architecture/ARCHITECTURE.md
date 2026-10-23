@@ -259,7 +259,7 @@ Steps 1–3 change no user-visible behaviour and should land before new features
 
 ## 10. Open questions
 
-- Species gate input: the board photos (leaf/panicle/grain) or a separate whole-plant photo? Which look-alikes are named classes (maize, pearl millet, sugarcane, Johnson grass)?
+- Species gate input: the board photos (leaf/panicle/grain) or a separate whole-plant photo? (Named look-alike classes were decided on 2026-10-21: Johnson grass, maize, sugarcane, pearl millet, finger millet; see `model/README.md`.)
 - Which named cultivars and regions does v1 target? (sets priors, tables, R1/R2)
 - Leaf-only early-season mode: useful given leaves carry ~3 traits?
 - Oldest iPhone / Android device to support? (sets R3 budget; iOS floor is iOS 17 today)
