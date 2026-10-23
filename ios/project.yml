@@ -3,7 +3,8 @@
 #   cd ios && xcodegen generate && pod install && open SorghumCapture.xcworkspace
 #
 # Species model: the only place for versioned model files is SorghumCapture/Resources/Models/.
-# Install an export from model/ with
+# The real traits-vN.tflite and traits-vN.json are committed there (plain git, about 1-2 MB),
+# so every checkout bundles the model and the R7 parity test runs. Install an export with
 #   ios/scripts/install-species-model.sh <export-dir>
 # which checks that traits-vN.tflite and traits-vN.json share N, replaces the old version and
 # regenerates the project. The app loads the highest N it finds (BundledSpeciesModel).
@@ -25,13 +26,13 @@ targets:
     sources:
       - path: SorghumCapture
         # "._*" files are macOS metadata written on exFAT drives; they must never reach the bundle.
-        # Models are added below, so only versioned model files are bundled from that folder.
-        excludes: ["**/._*", "Resources/Models"]
+        # Models are added below, so only Resources/Models bundles versioned model files; a
+        # traits-v* file anywhere else in the app sources is never bundled.
+        excludes: ["**/._*", "**/traits-v*", "Resources/Models"]
       - path: SorghumCapture/Resources/Models
         buildPhase: resources
         includes: ["traits-v*.tflite", "traits-v*.json"]
-        excludes: ["._*"]
-        # Missing until a model is installed; the app then runs without the species check.
+        # Missing until traits-v1 is committed; the app then runs without the species check.
         optional: true
     preBuildScripts:
       # Builds the shared Kotlin core (shared/) as Shared.framework for the current SDK and
