@@ -21,18 +21,22 @@ shells. The whole design is in [ARCHITECTURE.md](architecture/ARCHITECTURE.md).
 | Phase 1 logic moved into `shared/` (KMP), images passed as `PixelImage` | Done (migration step 1) | `main` (PR #3, merged) |
 | Capture state machine moved from `CaptureViewModel` to `shared/session/CaptureFlow` | Done (step 2) | `main` (PR #3, merged) |
 | iOS app uses `Shared.framework` instead of Swift copies; Swift ports deleted | Done (step 3). Still open: R3 benchmark on a real iPhone (live green check under 5 ms/frame) and a real-device check | `main` (PR #3, merged) |
-| `shared/species` (`ImageModel` port, `ModelMetadata`, `SpeciesGate`) + LiteRT runner on iPhone + photo-library analysis | Done; waits for a trained model file | `main` (PR #4, merged) |
-| Species model ("is it sorghum?"): data sources, training, INT8 export | Pipeline written; data download and training in progress on the LaCie drive | `feature/species-model` (replaces PR #1) |
-| Bundling `traits-vN` into iOS + model parity XCTest | In progress | `feature/ios-species-model` |
-| **Android species gate: LiteRT runner, asset loader, UI states** | In progress | `feature/android-litert` |
-| Colour card calibration, trait catalogue, reasoning (step 5-6) | In progress (PM session) | `feature/calibration`, `feature/traits-core`, `feature/reasoning` |
+| `shared/species` (`ImageModel` port, `ModelMetadata`, `SpeciesGate`) + LiteRT runner on iPhone + photo-library analysis | Done; bad output or a missing model gives "species not checked" (PR #18); waits for a trained model file | `main` (PR #4, PR #18) |
+| Species model ("is it sorghum?"): data sources, training, INT8 export | Pipeline merged (PR #11). Iteration 1 trained but **below the bar** (sorghum vs not-sorghum 0.671, bar 0.90; INT8 loses 14 points, bar 2), so it is not in the app. Iteration 2 (minimalistic MobileNetV3) paused | `main`; iteration 2 on `feature/species-model-v2` |
+| Bundling `traits-vN` into iOS + model parity XCTest | Done; waits for a model that passes the bar | `main` (PR #12, merged) |
+| **Android species gate: LiteRT runner, asset loader, UI states** | **Paused** (2026-10-23: iPhone first). Work in progress kept on the branch, no PR | `feature/android-litert` |
+| Trait catalogue + `TraitEstimate` with noise floor (`shared/traits`) | Done | `main` (PR #7) |
+| Colour card calibration: ColorChecker Classic Mini, affine colour fit, mm scale (`shared/calibration`, ADR-0008) | Done, internal to `shared/`; review follow-ups merged | `main` (PR #9, PR #16) |
+| Cultivar matching: `cultivars-vN.json` parser, `CultivarTableSource` port, naive Bayes, groups, "unrecognized", corrections (`shared/reasoning`) | Done; no real tables yet (Genesys builder not started) | `main` (PR #8) |
+| Sample detection: green detector moved to `shared/segmentation`; board-contrast mask for panicles and grain | Done; contrast mask not wired into capture yet | `main` (PR #17) |
+| `SessionState` and session API design (SKIE, 15 states) | Decided (ADR-0009). Session pipeline (S6a) not started | `main` (PR #13) |
 
 Migration steps (ARCHITECTURE.md section 8): 1 shared module, 2 session, 3 iOS on shared,
 4 species gate, 5 calibration, 6 measured traits + reasoning, 7 learned traits.
 **Steps 1-3 must not change behaviour.** If the app behaves differently after them, that
 is a bug.
 
-## 3. Android code map today (`feature/kmp-shared`)
+## 3. Android code map today (`main`)
 
 | File | What it does | Has logic? |
 |---|---|---|
@@ -46,7 +50,8 @@ is a bug.
 | `app/.../camera/TiltSensor.kt` | Gravity sensor (accelerometer fallback) to `DeviceTilt` flow | No |
 | `shared/.../session/CaptureFlow.kt` | Capture state machine: guiding, checking, accepted, rejected, failures | Yes |
 | `shared/.../capture/guidance/*` | Tilt to instruction, steady-hold timer (800 ms) | Yes |
-| `shared/.../segmentation/GreenCoverage.kt` | Excess-green plant detector, used live **and** after capture | Yes |
+| `shared/.../segmentation/GreenCoverage.kt` | Excess-green plant detector, used live **and** after capture (moved from `capture/sample` in PR #17) | Yes |
+| `shared/.../segmentation/SampleDetection.kt` | `detectSampleMask`: green mask for leaves, board-contrast mask for panicles and grain | Yes (not wired yet) |
 | `shared/.../capture/quality/PhotoQuality.kt` | No sample / too dark / glare / blurry at 640 px | Yes |
 | `shared/.../imaging/PixelImage.kt` | Plain RGB image type crossing the native/shared boundary | Type only |
 
@@ -88,7 +93,8 @@ In order. Items marked *ready* can start now.
 
 1. **Check phase 1 on a real Android device** now that the KMP core is merged (PR #3):
    guidance, auto-capture and rejections must behave as before. *Ready now.*
-2. **Species gate on Android** (step 4; being built on `feature/android-litert`, review it):
+2. **Species gate on Android** (step 4). **Paused 2026-10-23: iPhone first.** Work in progress is on
+   `feature/android-litert`; pick it up from there when Android resumes:
    - An `ImageModel` implementation using LiteRT: load `traits-vN.tflite` from assets once,
      feed the uint8 input, return `Map<HeadId, FloatArray>`. No preprocessing in Kotlin
      Android code; `shared/` does it from `traits-vN.json`.
@@ -104,7 +110,7 @@ In order. Items marked *ready* can start now.
 
 ## 7. The species model, in short
 
-Details in `model/README.md` on `feature/model-species-head`.
+Details in `model/README.md`.
 
 - **Classes** (output order): sorghum_bicolor, johnson_grass, maize, sugarcane,
   pearl_millet, finger_millet, other_grass, other_plant, no_plant. Johnson grass counts as a
@@ -112,10 +118,11 @@ Details in `model/README.md` on `feature/model-species-head`.
 - **Model I/O:** 224x224 RGB uint8 in, float logits out. `traits-vN.json` holds the input
   quantization, class order and groups, temperature, sorghum threshold and evaluation
   numbers.
-- **Data problem:** commercially licensed iNaturalist photos are thin (334 sorghum, 217
-  maize, 29 sugarcane, 11 pearl millet, 4 finger millet observations). **We need our own
-  photos** of millets, sugarcane and empty boards (`no_plant`) before a first model can
-  train. If you are near fields, photos help. One folder per plant or plot.
+- **Data:** iNaturalist, GBIF, Wikimedia Commons, Flickr, Mendeley and Figshare photos, with
+  CC BY-NC allowed; Commons and Flickr labels are checked with BioCLIP 2; splits by observer
+  or plot. Our own photos of millets, sugarcane and empty boards (`no_plant`) still help.
+- **Iteration 1 (held-out):** all 9 classes 0.867 float, 0.727 INT8; sorghum vs not-sorghum
+  0.671. Below the bar (0.90, INT8 within 2 points), so the export refused to ship it.
 
 ## 8. Open questions and decisions needed
 
@@ -127,6 +134,9 @@ Details in `model/README.md` on `feature/model-species-head`.
 | Does the species gate run on the board photos or on a separate whole-plant photo? | Changes what users photograph and what data we collect | Product owner |
 | Oldest Android device to support? | Sets the live-analysis performance budget | Team |
 | Which named cultivars and regions does v1 target? | Sets tables and priors | Product owner |
+| Measure a physical ColorChecker Classic Mini: centre of patch 1 to patch 6, divided by 5. The published sizes give 14.25 or 14.33 mm. **ASSUMPTION — confirm** (14.3 mm used) | Every mm trait (seed size) scales with it | Team |
+| Colour card sits in a fixed slot on the board. **ASSUMPTION — confirm** (ADR-0008) | Calibration searches only that slot; the contrast mask must exclude it before panicle and grain capture is wired | Product owner |
+| With no model, or a model that fails to load, photos go on to matching marked "species not checked"; an unsure result is always a retake. (ADR-0009) | Decides what users see before the species model ships | Product owner |
 
 ## 9. How we work
 
@@ -141,6 +151,22 @@ Details in `model/README.md` on `feature/model-species-head`.
 
 Newest first. One line per change that someone on Android should know about.
 
+- **2026-10-23:** PR #18 merged: the species check reports bad model output as
+  `Unavailable(reason)` instead of crashing, and an invalid model loads as "no model". Only
+  sorghum and unchecked photos go on to matching; unsure means retake. iOS shows "Species
+  not checked". Android must render the same state when its gate resumes.
+- **2026-10-23:** PRs #8, #16 and #17 merged after review and green tests (`:shared:allTests`
+  235 JVM + 235 iOS simulator, `:app:testDebugUnitTest`). `shared/` now has trait reading
+  types, colour-card calibration, cultivar matching and the panicle/grain contrast mask.
+  **Android imports changed:** `GreenCoverage` and friends moved from `capture.sample` to
+  `com.sorghum.segmentation`, and `PhotoType` to `com.sorghum.imaging`. Swift names did not
+  change. Follow-ups before the contrast mask is wired into capture: exclude the colour-card
+  slot, add boundary tests, and include the per-frame mask allocation in the R3 timing check.
+- **2026-10-23:** Focus is iPhone first. Android species-gate work (`feature/android-litert`)
+  is paused with no PR; `app/` only gets import fixes when a `shared/` package moves.
+- **2026-10-23:** Builds on this Mac: never build on the exFAT LaCie drive (Gradle and
+  Kotlin/Native hang in kernel I/O there) and run one KMP build at a time (parallel builds
+  pushed swap past 13 GB). Worktrees and the Gradle home live in an APFS sparse image on LaCie.
 - **2026-10-23:** PR #11 merged (`model/` pipeline): downloaders for iNaturalist, GBIF,
   Commons, Flickr, Mendeley and Figshare; BioCLIP 2 check of Commons/Flickr labels (unchecked
   labels never reach training); duplicate removal; export refuses a model below the bar.
