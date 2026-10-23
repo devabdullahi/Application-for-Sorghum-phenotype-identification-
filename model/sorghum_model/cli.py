@@ -50,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def _add_inat_download(commands) -> None:
     command = commands.add_parser(
-        "inat-download", help="Download research-grade CC0/CC BY/CC BY-SA iNaturalist photos."
+        "inat-download", help="Download research-grade CC0/CC BY/CC BY-SA/CC BY-NC/CC BY-NC-SA iNaturalist photos."
     )
     command.add_argument("--data-root", type=Path, default=DEFAULT_DATA_ROOT)
     command.add_argument("--manifest", type=Path, default=DEFAULT_INAT_MANIFEST)
@@ -100,7 +100,7 @@ def _add_import_folder(commands) -> None:
     command.add_argument("--data-root", type=Path, default=DEFAULT_DATA_ROOT)
     command.add_argument("--class", dest="class_name", required=True, choices=SPECIES_CLASS_NAMES)
     command.add_argument("--source", required=True, help="Short dataset name, e.g. sorghum-weed-2023.")
-    command.add_argument("--license", required=True, help="cc0, cc-by or cc-by-sa.")
+    command.add_argument("--license", required=True, help="cc0, cc-by, cc-by-sa, cc-by-nc or cc-by-nc-sa.")
     command.add_argument("--attribution", required=True)
     command.add_argument("--annotator", required=True, help="Who verified the labels.")
     command.add_argument("--labelled-on", required=True, help="ISO date of the labelling.")

@@ -20,7 +20,7 @@ from sorghum_model.calibration import (
     fit_temperature,
     softmax,
 )
-from sorghum_model.manifest import ImageRecord, sha256_of_file
+from sorghum_model.manifest import ImageRecord, license_summary, sha256_of_file
 from sorghum_model.metadata import InputQuantization, build_metadata, model_file_names, write_metadata
 from sorghum_model.settings import MODEL_INPUT_SIZE_PX, ExportSettings
 from sorghum_model.species_classes import SPECIES_CLASS_NAMES, SpeciesGroup, species_class
@@ -99,7 +99,10 @@ def export_model(
                 )
             },
             "modelFileSha256": sha256_of_file(output_dir / model_file),
-        },
+        }
+        # Additive keys only: `shared/` does not read trainingData. "licenses" and
+        # "nonCommercial" tell a reader whether the model may be used commercially.
+        | license_summary(records),
     )
     write_metadata(metadata, output_dir / metadata_file)
     _write_fixtures(test, test_images, runner, temperature, version, fixtures_dir, settings.fixture_images)

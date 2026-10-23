@@ -14,8 +14,8 @@ def _photo(photo_id, license_code):
     }
 
 
-def test_keeps_only_commercial_photos_at_medium_size():
-    photos = select_photos(_observation(_photo(1, "cc-by-nc"), _photo(2, "cc0")), "maize", 3)
+def test_keeps_allowed_licences_at_medium_size():
+    photos = select_photos(_observation(_photo(1, "cc-by-nc-nd"), _photo(2, "cc0")), "maize", 3)
     assert [p.record_without_file["source_id"] for p in photos] == ["2"]
     assert photos[0].url.endswith("/2/medium.jpg")
 

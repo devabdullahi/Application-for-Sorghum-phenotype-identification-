@@ -56,3 +56,14 @@ def test_written_file_is_valid_json(tmp_path):
     path = tmp_path / "traits-v1.json"
     write_metadata(_metadata(), path)
     assert json.loads(path.read_text())["modelVersion"] == 1
+
+
+def test_licence_summary_is_additive_under_training_data():
+    # The app reads schemaVersion, input and heads.species; trainingData may only grow.
+    metadata = _metadata(training_data={"licenses": ["cc-by", "cc-by-nc"], "nonCommercial": True})
+    assert metadata["schemaVersion"] == 1
+    assert set(metadata["input"]) >= {"widthPx", "heightPx", "quantization", "resize"}
+    assert set(metadata["heads"]["species"]) >= {
+        "outputIndex", "classes", "temperature", "sorghumThreshold"
+    }
+    assert metadata["trainingData"]["nonCommercial"] is True

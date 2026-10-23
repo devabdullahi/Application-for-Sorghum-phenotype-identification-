@@ -1,4 +1,4 @@
-"""Downloads research-grade, commercially licensed photos from iNaturalist.
+"""Downloads research-grade, openly licensed photos from iNaturalist.
 
 Research grade means at least two thirds of identifiers agree on the species, which is the
 label verification we rely on for iNaturalist photos. This is a developer tool that runs on a
@@ -13,7 +13,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-from sorghum_model.manifest import COMMERCIAL_LICENSES, ImageRecord, sha256_of_file
+from sorghum_model.manifest import ALLOWED_LICENSES, ImageRecord, sha256_of_file
 
 INAT_OBSERVATIONS_URL = "https://api.inaturalist.org/v1/observations"
 
@@ -35,7 +35,7 @@ class PhotoToDownload:
 
 
 def fetch_observations(taxon_id: int, max_observations: int) -> Iterator[dict]:
-    """Yields research-grade observations of a taxon that have a commercially licensed photo.
+    """Yields research-grade observations of a taxon that have a photo with an allowed licence.
 
     Pages by ascending observation id (`id_above`), which the API supports past the 10,000
     result limit of page numbers.
@@ -47,7 +47,7 @@ def fetch_observations(taxon_id: int, max_observations: int) -> Iterator[dict]:
             {
                 "taxon_id": taxon_id,
                 "quality_grade": "research",
-                "photo_license": ",".join(sorted(COMMERCIAL_LICENSES)),
+                "photo_license": ",".join(sorted(ALLOWED_LICENSES)),
                 "order_by": "id",
                 "order": "asc",
                 "id_above": last_id,
@@ -70,7 +70,7 @@ def fetch_observations(taxon_id: int, max_observations: int) -> Iterator[dict]:
 def select_photos(
     observation: dict, class_name: str, max_photos_per_observation: int
 ) -> list[PhotoToDownload]:
-    """Picks the commercially licensed photos of one observation.
+    """Picks the photos of one observation whose licence is in ALLOWED_LICENSES.
 
     The observation filter matches when any photo has an allowed licence, so each photo is
     checked again here. Photos are capped per observation so one well-photographed plant does
@@ -81,7 +81,7 @@ def select_photos(
         if len(selected) >= max_photos_per_observation:
             break
         license_code = photo.get("license_code")
-        if license_code not in COMMERCIAL_LICENSES:
+        if license_code not in ALLOWED_LICENSES:
             continue
         photo_id = str(photo["id"])
         # The API returns the "square" thumbnail URL; "medium" is 500 px on the long side,
