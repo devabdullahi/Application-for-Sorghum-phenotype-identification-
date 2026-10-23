@@ -22,4 +22,5 @@ Option 2. After the quality check, a `species` step classifies the photo as **so
 - MobileNetV3 + LiteRT integration moves earlier: it is now migration step 4, before calibration.
 - Needs a training set per photo type (leaf, panicle, grain on the board) for sorghum and look-alikes; public datasets help for leaves and panicles, grain may need our own photos.
 - Weedy *Sorghum* species (e.g. Johnson grass, *S. halepense*) are botanically sorghum but not crop cultivars; class definition must decide where they go.
+  - Resolved 2026-10-21: Johnson grass is a named look-alike class (`johnson_grass`), so the gate says "not sorghum (Johnson grass)". Full class list: `model/sorghum_model/species_classes.py`.
 - Open: does the gate run on the board photos the app already takes, or on a separate whole-plant photo?

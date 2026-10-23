@@ -98,11 +98,11 @@ Rules:
 
 | Module | Owns | Exists today as |
 | --- | --- | --- |
-| `imaging` | `PixelImage(width, height, rgb: ByteArray)`, `NormalizedRect`, `PixelRect`, crop/downscale/rotate on `PixelImage` | `frame/TargetFrame.kt` (rect types); Bitmap code in `camera/FrameCropper.kt` to be replaced |
+| `imaging` | `PixelImage(width, height, rgb: ByteArray)`, `NormalizedRect`, `PixelRect`, crop/downscale/rotate on `PixelImage` | `imaging/ImageRects.kt` (rect types); Bitmap code in `camera/FrameCropper.kt` to be replaced |
 | `capture` | Target frame, frame mapping, tilt → guidance state, steady-hold timer, photo quality check | `frame/`, `guidance/`, `quality/` |
 | `segmentation` | Plant mask by excess-green (leaves); background-contrast mask vs plain board (panicles, grain); sample coverage + edge touch | `sample/GreenCoverage.kt`; contrast mask is new |
 | `species` | Map the model's species head to `SpeciesEstimate` (sorghum / named look-alike / other plant / no plant); decide continue, "not sorghum", or "unsure — retake" against a calibrated threshold from model metadata | New (ADR-0006) |
-| `calibration` | Find colour card, fit affine colour correction to known patch values, pixels-per-mm from patch size | New (port PlantCV method) |
+| `calibration` | Find colour card (ColorChecker Classic Mini in a board slot), fit affine colour correction in linear sRGB to known patch values, pixels-per-mm from patch pitch ([ADR-0008](adr/0008-colour-card-choice.md)) | `shared/calibration/` (PlantCV affine method, linear light) |
 | `traits` | Trait catalogue (descriptor id, states, photo type, method); `TraitEstimate` (distribution over states, or value + uncertainty for continuous traits); measured readers (midrib colour, pigmentation, glume colour, grain colour, lustre, seed size); mapping of `ImageModel` trait heads to `TraitEstimate` | New |
 | `reasoning` | `CultivarTable` (P(state \| cultivar) per trait, with noise floor), priors, naive Bayes posterior, decision (top-k, "unrecognized" when fit is poor), explanation (traits that moved the ranking most) | New |
 | `session` | Use cases and state: start session → pick photo type → live guidance → capture → check → calibrate → read traits → accumulate across photos → reason → correct trait → re-reason | Capture flow in `shared/session/CaptureFlow.kt` (step 2); Android `CaptureViewModel` and iOS `CaptureModel` adapt it |
@@ -118,7 +118,7 @@ These cross the KMP ↔ native boundary or the model boundary. Keep them plain d
 | `DeviceTilt` | pitch°, roll°; 0/0 = flat, screen up | Same convention as phase 1. |
 | `ImageModel` | uint8 input tensor built by `shared/` → every output tensor as floats, by output index (species now, traits later) | Preprocessing spec (size, crop, quantization) lives in `model/` metadata and is applied in `shared/`, not in native code; `shared/` maps outputs to heads by `outputIndex`. |
 | `CultivarTableSource` | → `CultivarTables` (versioned JSON bytes parsed in `shared/`) | Native only reads the bundled file; parsing and validation are shared. |
-| `SessionState` | Sealed hierarchy exposed to UI | Swift consumes via SKIE (sealed → enum) or flat state fields. |
+| `SessionState` | Sealed hierarchy exposed to UI as `StateFlow<SessionState>` | Swift consumes it through SKIE (`onEnum(of:)`, `AsyncSequence`), scoped to `session`; states, API and failure mapping in [ADR-0009](adr/0009-session-state.md). |
 
 Units: lengths in **mm**; colours inside `shared/` in **corrected linear sRGB 0–1** after calibration; probabilities always sum to 1 per trait.
 
@@ -259,7 +259,7 @@ Steps 1–3 change no user-visible behaviour and should land before new features
 
 ## 10. Open questions
 
-- Species gate input: the board photos (leaf/panicle/grain) or a separate whole-plant photo? Which look-alikes are named classes (maize, pearl millet, sugarcane, Johnson grass)?
+- Species gate input: the board photos (leaf/panicle/grain) or a separate whole-plant photo? (Named look-alike classes were decided on 2026-10-21: Johnson grass, maize, sugarcane, pearl millet, finger millet; see `model/README.md`.)
 - Which named cultivars and regions does v1 target? (sets priors, tables, R1/R2)
 - Leaf-only early-season mode: useful given leaves carry ~3 traits?
 - Oldest iPhone / Android device to support? (sets R3 budget; iOS floor is iOS 17 today)

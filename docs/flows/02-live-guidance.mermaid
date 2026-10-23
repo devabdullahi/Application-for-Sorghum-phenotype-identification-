@@ -1,0 +1,22 @@
+%% Status: built (phase 1). Android classes on feature/kmp-shared.
+%% Shows how one camera frame and one tilt reading become one on-screen instruction.
+sequenceDiagram
+    participant X as CameraX ImageAnalysis<br/>(analysis executor)
+    participant A as SampleCoverageAnalyzer
+    participant G as TiltSensor<br/>(gravity sensor, ~16 Hz)
+    participant VM as CaptureViewModel<br/>(main thread)
+    participant F as shared CaptureFlow
+    participant S as CaptureScreen
+
+    Note over X: STRATEGY_KEEP_ONLY_LATEST:<br/>late frames are dropped, never queued
+    X->>A: analyze(ImageProxy, RGBA 640x480)
+    A->>A: cropToTargetFrame (max 160 px long side)<br/>toPixelImage()
+    A->>A: measureSampleCoverage(PixelImage)
+    A->>A: image.use {} closes frame
+    A->>VM: onSampleCoverageMeasured(coverage, timestamp) on main
+    G->>VM: onTiltChanged(DeviceTilt, timestamp)
+    VM->>F: forward event
+    F->>F: evaluateGuidance(tilt, coverage)<br/>then SteadyHoldTimer (800 ms)
+    F-->>VM: state = Guiding(GuidanceState)
+    VM-->>S: uiState (StateFlow)
+    S->>S: show one instruction<br/>(level, sample, hold, ready)

@@ -1,0 +1,11 @@
+%% Status: how work is split on 2026-10-21. Each stream has its own branch and git worktree,
+%% so two people (or two Claude sessions) never edit the same checkout.
+flowchart LR
+    MAIN["main"]
+    MAIN --> KMP["feature/kmp-shared<br/>Kotlin: shared/ module, session,<br/>PixelImage, iOS converter"]
+    MAIN --> ML["feature/model-species-head<br/>Python: model/ species head"]
+    MAIN --> DOCS["docs/keep-up<br/>KEEP_UP.md + docs/flows/"]
+    KMP -- PR --> MAIN
+    ML -- PR --> MAIN
+    DOCS -- PR --> MAIN
+    ANDROID["Android teammate"] -. "reads KEEP_UP.md,<br/>reviews KMP PR" .-> KMP

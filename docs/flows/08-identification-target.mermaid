@@ -1,0 +1,19 @@
+%% Status: target design (ARCHITECTURE.md section 4.1). Steps 5-7 of the migration.
+flowchart TD
+    PICK["User picks leaf / panicle / grain"] --> LIVE["Live guidance (02, 03)"]
+    LIVE --> SHOT["Capture + quality check (04)"]
+    SHOT -- rejected --> LIVE
+    SHOT -- accepted --> GATE["Species gate (06)"]
+    GATE -- "not sorghum / unsure" --> STOP["Show reason, retake"]
+    GATE -- sorghum --> CARD{"Colour card found?"}
+    CARD -- no --> REJ["Reject: colour card not visible"]
+    CARD -- yes --> CORR["Colour correction + pixels per mm"]
+    CORR --> MEAS["Measured trait readers<br/>(colours, seed size)"]
+    CORR --> LEARN["Learned trait heads<br/>(same model, later)"]
+    MEAS & LEARN --> EST["TraitEstimate per trait<br/>(probabilities, noise floor)"]
+    EST --> ACC["Accumulate across photos"]
+    ACC --> NB["Naive Bayes over cultivar tables"]
+    NB --> DEC{"Best match fits well?"}
+    DEC -- yes --> RES["Top matches + traits that drove them"]
+    DEC -- "several share profile" --> GRP["Group of compatible cultivars"]
+    DEC -- no --> UNR["Unrecognized + compatible group"]

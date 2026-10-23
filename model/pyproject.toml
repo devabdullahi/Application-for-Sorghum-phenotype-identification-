@@ -1,0 +1,39 @@
+[project]
+name = "sorghum-model"
+version = "0.1.0"
+description = "Training, INT8 export and fixtures for the on-device sorghum image model (species head)."
+# TensorFlow publishes no wheels for 3.13+ in the supported range below.
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "numpy>=1.26,<3",
+    "pillow>=10",
+]
+
+[project.optional-dependencies]
+# Only training and export need TensorFlow. Data download, splits, calibration maths and
+# metadata run (and are tested) without it.
+train = [
+    "tensorflow>=2.18,<2.21",
+]
+# Only `review-labels` needs PyTorch and open_clip (BioCLIP 2 zero-shot). Kept apart from
+# `train` so the TensorFlow environment does not also carry PyTorch.
+review = [
+    "torch>=2.4",
+    "open_clip_torch>=2.32",
+]
+
+[project.scripts]
+sorghum-model = "sorghum_model.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["sorghum_model"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
