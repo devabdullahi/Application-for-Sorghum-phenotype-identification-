@@ -24,6 +24,28 @@
     <string name="retake">Retake</string>
     <string name="try_again">Try again</string>
 
+    <!-- Species check (ADR-0006), shown with the accepted photo. Same wording as iOS. -->
+    <string name="species_check_unavailable">Species check unavailable: no model installed. Photos are only checked for quality.</string>
+    <string name="species_unavailable_detail">Species check not installed yet: this photo was only checked for quality.</string>
+    <string name="species_sorghum_title">Sorghum</string>
+    <!-- %1$s is a whole percentage, e.g. "93%". -->
+    <string name="species_sorghum_detail">Photo accepted. Sorghum, %1$s sure.</string>
+    <string name="species_not_sorghum_title">Not sorghum</string>
+    <!-- %1$s is a look-alike plant name below, e.g. "maize". -->
+    <string name="species_look_alike_detail">This looks like %1$s, not sorghum.</string>
+    <string name="species_not_sorghum_detail">This does not look like sorghum.</string>
+    <string name="species_no_plant_title">No plant found</string>
+    <string name="species_no_plant_detail">Place the sample on the board inside the frame and retake.</string>
+    <string name="species_unsure_title">Not sure it is sorghum</string>
+    <string name="species_unsure_detail">Retake closer, in good light, or photograph another part of the plant.</string>
+
+    <!-- Look-alike plants the species model can name (model/sorghum_model/species_classes.py). -->
+    <string name="look_alike_johnson_grass">Johnson grass</string>
+    <string name="look_alike_maize">maize</string>
+    <string name="look_alike_sugarcane">sugarcane</string>
+    <string name="look_alike_pearl_millet">pearl millet</string>
+    <string name="look_alike_finger_millet">finger millet</string>
+
     <!-- Errors. -->
     <string name="camera_permission_needed">Camera permission is needed to photograph samples.</string>
     <string name="grant_permission">Grant permission</string>

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -50,9 +51,11 @@ import com.sorghum.capture.camera.TiltSensor
 import com.sorghum.capture.camera.TiltSensorUnavailableException
 import com.sorghum.capture.guidance.GuidanceState
 import com.sorghum.capture.quality.RejectionReason
+import com.sorghum.species.SpeciesCheck
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
+import java.text.NumberFormat
 import kotlin.math.roundToInt
 
 private const val TAG = "CaptureScreen"
@@ -168,6 +171,18 @@ private fun CameraPreview(viewModel: CaptureViewModel, guidance: GuidanceState?,
             )
         }
 
+        // A missing model is announced before the photo is taken (ARCHITECTURE.md section 4.3).
+        if (!viewModel.isSpeciesCheckAvailable) {
+            Text(
+                text = stringResource(R.string.species_check_unavailable),
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .safeDrawingPadding()
+                    .padding(24.dp),
+            )
+        }
+
         Text(
             text = stringResource(message),
             color = Color.White,
@@ -183,15 +198,17 @@ private fun CameraPreview(viewModel: CaptureViewModel, guidance: GuidanceState?,
 @Composable
 private fun ResultView(state: CaptureUiState, onRetake: () -> Unit) {
     if (state is CaptureUiState.PhotoAccepted) {
+        val verdict = speciesVerdict(state.species)
         Column(
             modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(stringResource(R.string.photo_accepted))
+            Text(verdict.title, color = verdict.color, style = MaterialTheme.typography.titleMedium)
+            Text(verdict.detail)
             Image(
                 bitmap = state.photo.asImageBitmap(),
-                contentDescription = stringResource(R.string.photo_accepted),
+                contentDescription = verdict.title,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             )
             Button(onClick = onRetake) { Text(stringResource(R.string.retake)) }
@@ -219,6 +236,67 @@ private fun MessageWithButton(message: String, buttonLabel: String, onClick: () 
         Text(message)
         Button(onClick = onClick) { Text(buttonLabel) }
     }
+}
+
+/** How a species result reads on screen. */
+private class SpeciesVerdict(val title: String, val detail: String, val color: Color)
+
+/**
+ * Wording and colour for a species result. Only presentation: the decision itself was made
+ * in the shared core. Mirrors `speciesVerdict` in `ios/SorghumCapture/UI/CaptureScreen.swift`.
+ */
+@Composable
+private fun speciesVerdict(species: SpeciesCheck): SpeciesVerdict = when (species) {
+    is SpeciesCheck.Sorghum -> SpeciesVerdict(
+        title = stringResource(R.string.species_sorghum_title),
+        detail = stringResource(R.string.species_sorghum_detail, wholePercent(species.sorghumProbability)),
+        color = VERDICT_GOOD_COLOR,
+    )
+    is SpeciesCheck.NotSorghum -> SpeciesVerdict(
+        title = stringResource(R.string.species_not_sorghum_title),
+        detail = species.lookAlikeClassId
+            ?.let { stringResource(R.string.species_look_alike_detail, lookAlikeName(it)) }
+            ?: stringResource(R.string.species_not_sorghum_detail),
+        color = VERDICT_STOP_COLOR,
+    )
+    SpeciesCheck.NoPlant -> SpeciesVerdict(
+        title = stringResource(R.string.species_no_plant_title),
+        detail = stringResource(R.string.species_no_plant_detail),
+        color = VERDICT_STOP_COLOR,
+    )
+    is SpeciesCheck.Unsure -> SpeciesVerdict(
+        title = stringResource(R.string.species_unsure_title),
+        detail = stringResource(R.string.species_unsure_detail),
+        color = VERDICT_UNSURE_COLOR,
+    )
+    SpeciesCheck.Unavailable -> SpeciesVerdict(
+        title = stringResource(R.string.photo_accepted),
+        detail = stringResource(R.string.species_unavailable_detail),
+        color = Color.Unspecified,
+    )
+}
+
+// Darker than the iOS colours, because the Android result screen has a light background.
+private val VERDICT_GOOD_COLOR = Color(0xFF2E7D32)
+private val VERDICT_STOP_COLOR = Color(0xFFE65100)
+private val VERDICT_UNSURE_COLOR = Color(0xFF9E6A00)
+
+/** A probability as a whole percentage in the user's locale, e.g. "93%". */
+private fun wholePercent(probability: Float): String = NumberFormat.getPercentInstance().format(probability)
+
+/**
+ * Display name for one of the model's look-alike class ids
+ * (`model/sorghum_model/species_classes.py`). An id the app does not know yet is shown with
+ * spaces instead of underscores, as on iOS, rather than hidden.
+ */
+@Composable
+private fun lookAlikeName(classId: String): String = when (classId) {
+    "johnson_grass" -> stringResource(R.string.look_alike_johnson_grass)
+    "maize" -> stringResource(R.string.look_alike_maize)
+    "sugarcane" -> stringResource(R.string.look_alike_sugarcane)
+    "pearl_millet" -> stringResource(R.string.look_alike_pearl_millet)
+    "finger_millet" -> stringResource(R.string.look_alike_finger_millet)
+    else -> classId.replace('_', ' ')
 }
 
 @StringRes
