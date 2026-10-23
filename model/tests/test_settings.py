@@ -28,3 +28,20 @@ def test_defaults_are_valid():
 def test_rejects_out_of_range_values(build):
     with pytest.raises(ValueError):
         build()
+
+
+def test_backbone_defaults_to_the_quantization_friendly_variant():
+    from sorghum_model.settings import Backbone, TrainingSettings
+
+    assert TrainingSettings().backbone is Backbone.MOBILENET_V3_SMALL_MINIMALISTIC
+    # A training report stores the value; reading it back gives the enum.
+    assert TrainingSettings(backbone="MobileNetV3-Small").backbone is Backbone.MOBILENET_V3_SMALL
+
+
+def test_rejects_an_unknown_backbone():
+    import pytest
+
+    from sorghum_model.settings import TrainingSettings
+
+    with pytest.raises(ValueError):
+        TrainingSettings(backbone="ResNet50")

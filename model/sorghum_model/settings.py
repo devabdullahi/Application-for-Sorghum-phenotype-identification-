@@ -6,6 +6,7 @@ must be tuned once real data is in.
 """
 
 from dataclasses import dataclass
+from enum import StrEnum
 
 # MobileNetV3-Small's ImageNet weights were trained at 224 px. Matching it keeps the
 # pretrained features useful, and it is the size `shared/` resizes to before `ImageModel`.
@@ -52,6 +53,17 @@ class SplitSettings:
             raise ValueError("near_duplicate_max_distance must be in [0, 16]")
 
 
+class Backbone(StrEnum):
+    """Keras MobileNetV3-Small variants; the value is written to traits-vN.json `backbone`."""
+
+    MOBILENET_V3_SMALL = "MobileNetV3-Small"
+    """Hard-swish activations and squeeze-and-excitation blocks."""
+
+    MOBILENET_V3_SMALL_MINIMALISTIC = "MobileNetV3-Small minimalistic"
+    """ReLU only, no squeeze-and-excitation, 3x3 kernels: the variant Keras ships for
+    quantized and edge use."""
+
+
 @dataclass(frozen=True)
 class TrainingSettings:
     """Training schedule for the species head.
@@ -70,6 +82,13 @@ class TrainingSettings:
             a handful of photos gives a head that is confidently wrong. Initial guess.
         min_evaluation_images_per_class: per validation and test split. Below this the
             temperature, threshold and accuracy for that class are noise.
+        backbone: the MobileNetV3-Small variant. Minimalistic, because the full variant lost
+            14 accuracy points to INT8 on the first real run (diag-1, 2026-10-23: float 0.867,
+            INT8 0.727), and a class-balanced representative set made it worse (0.187), so
+            the loss comes from the architecture (hard-swish and squeeze-and-excitation
+            quantize poorly), not from calibration data. Minimalistic gives up some ImageNet
+            accuracy for a model that quantizes closely. Input size and output layout are
+            the same for both, so the metadata contract does not change.
     """
 
     batch_size: int = 32
@@ -80,6 +99,7 @@ class TrainingSettings:
     dropout: float = 0.2
     min_train_images_per_class: int = 50
     min_evaluation_images_per_class: int = 10
+    backbone: Backbone = Backbone.MOBILENET_V3_SMALL_MINIMALISTIC
 
     def __post_init__(self) -> None:
         if self.batch_size < 1:
@@ -92,6 +112,8 @@ class TrainingSettings:
             raise ValueError("dropout must be in [0, 1)")
         if self.min_train_images_per_class < 1 or self.min_evaluation_images_per_class < 1:
             raise ValueError("minimum images per class must be at least 1")
+        # Frozen dataclass: accept the enum's value (e.g. from a training report) too.
+        object.__setattr__(self, "backbone", Backbone(self.backbone))
 
 
 @dataclass(frozen=True)

@@ -30,11 +30,18 @@ from sorghum_model.quantization import (
     measured_logit_tolerance,
     quantize_input,
 )
-from sorghum_model.settings import MODEL_INPUT_SIZE_PX, ExportSettings
+from sorghum_model.settings import MODEL_INPUT_SIZE_PX, Backbone, ExportSettings
 from sorghum_model.ship_bar import enforce_ship_bar, ship_bar_problems, sorghum_decision_accuracy
 from sorghum_model.species_classes import SPECIES_CLASS_NAMES, SpeciesGroup, species_class
 from sorghum_model.splits import Split, count_per_class_and_split
-from sorghum_model.train import KERAS_MODEL_FILE, SAVED_MODEL_DIR, SHUFFLE_SEED, class_indices, load_images
+from sorghum_model.train import (
+    KERAS_MODEL_FILE,
+    SAVED_MODEL_DIR,
+    SHUFFLE_SEED,
+    TRAINING_REPORT_FILE,
+    class_indices,
+    load_images,
+)
 
 FIXTURE_EXPECTATIONS_FILE = "expected.json"
 
@@ -71,6 +78,7 @@ def export_model(
 
     float_model = keras.models.load_model(run_dir / KERAS_MODEL_FILE)
     float_test_logits = float_model.predict(test_images.astype(np.float32), verbose=0)
+    float_validation_logits = float_model.predict(validation_images.astype(np.float32), verbose=0)
     int8_test_logits = runner.logits(test_images)
     int8_validation_logits = runner.logits(validation_images)
 
@@ -101,8 +109,19 @@ def export_model(
         "validationSorghumRecall": threshold.recall,
     }
     parity = _quantization_parity(float_test_logits, int8_test_logits, test_labels)
+    # For comparison only: what the float model would score with its own temperature and
+    # threshold. The phones run the INT8 model, so the bar is judged on INT8.
+    evaluation["float"] = _float_evaluation(
+        float_validation_logits, validation_labels, float_test_logits, test_labels,
+        sorghum_index, settings,
+    )
+    xnnpack_error = xnnpack_load_error(model_bytes)
+    parity["loadsWithXnnpack"] = xnnpack_error is None
     # Checked before anything is written, so a model below the bar never reaches out_dir.
-    problems = threshold_problems + ship_bar_problems(
+    # Phones run LiteRT with XNNPACK, so a model that loads only with the reference kernels
+    # would fail on device.
+    xnnpack_problems = [f"INT8 model does not load under XNNPACK: {xnnpack_error}"] if xnnpack_error else []
+    problems = threshold_problems + xnnpack_problems + ship_bar_problems(
         evaluation["testSorghumDecisionAccuracy"],
         parity["floatAccuracy"],
         parity["int8Accuracy"],
@@ -144,6 +163,7 @@ def export_model(
             "problems": problems,
         },
         below_bar=below_bar,
+        backbone=_trained_backbone(run_dir),
     )
     write_metadata(metadata, output_dir / metadata_file)
     logit_tolerance = runner.logit_step() or measured_logit_tolerance(
@@ -154,6 +174,48 @@ def export_model(
         logit_tolerance,
     )
     return output_dir / metadata_file
+
+
+def xnnpack_load_error(model_bytes: bytes) -> str | None:
+    """Loads the model with TFLite's default delegates (XNNPACK on CPU), as phones do.
+
+    Returns None when it loads and runs one inference, else the interpreter's error.
+    """
+    try:
+        interpreter = tf.lite.Interpreter(model_content=model_bytes)
+        interpreter.allocate_tensors()
+        detail = interpreter.get_input_details()[0]
+        interpreter.set_tensor(detail["index"], np.zeros(detail["shape"], dtype=detail["dtype"]))
+        interpreter.invoke()
+    except (RuntimeError, ValueError) as error:
+        return " ".join(str(error).split())
+    return None
+
+
+def _float_evaluation(validation_logits, validation_labels, test_logits, test_labels, sorghum_index, settings):
+    """Test numbers of the float model with a temperature and threshold fitted on its own
+    validation outputs, to show what quantization costs."""
+    temperature = fit_temperature(validation_logits, validation_labels)
+    validation_sorghum = softmax(validation_logits, temperature)[:, sorghum_index]
+    is_sorghum = validation_labels == sorghum_index
+    try:
+        threshold = choose_sorghum_threshold(
+            validation_sorghum, is_sorghum, settings.sorghum_precision_target, settings.min_threshold_predictions
+        )
+    except ValueError:
+        threshold = most_precise_sorghum_threshold(validation_sorghum, is_sorghum, settings.min_threshold_predictions)
+    evaluation = _evaluate(test_logits, test_labels, temperature, threshold.threshold, sorghum_index, settings)
+    return evaluation | {"temperature": temperature, "sorghumThreshold": threshold.threshold}
+
+
+def _trained_backbone(run_dir: Path) -> str:
+    """The backbone the run was trained with; runs from before the setting used the full variant."""
+    report_path = run_dir / TRAINING_REPORT_FILE
+    if report_path.exists():
+        settings = json.loads(report_path.read_text(encoding="utf-8")).get("settings", {})
+        if "backbone" in settings:
+            return str(Backbone(settings["backbone"]))
+    return str(Backbone.MOBILENET_V3_SMALL)
 
 
 class _TfliteRunner:
