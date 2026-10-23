@@ -123,6 +123,7 @@ Details in `model/README.md` on `feature/model-species-head`.
 |---|---|---|
 | ~~Licence policy~~ Resolved 2026-10-23: CC BY-NC and BY-NC-SA allowed (non-commercial research app, ARCHITECTURE.md section 2). The trained model then carries NC terms. **ASSUMPTION — confirm** | Going commercial would need NC data removed and a retrain | Product owner |
 | Species pass bar: >=90% held-out sorghum vs not-sorghum, INT8 within 2 points of float. **ASSUMPTION — confirm** | Decides when the model ships | Product owner |
+| BioCLIP 2 label check thresholds: plant photo kept when its class is top with p >= 0.5; `no_plant` kept when total plant p < 0.2 (`LabelReviewSettings`). **ASSUMPTION — confirm** | Decides which Commons/Flickr photos train the model | Product owner |
 | Does the species gate run on the board photos or on a separate whole-plant photo? | Changes what users photograph and what data we collect | Product owner |
 | Oldest Android device to support? | Sets the live-analysis performance budget | Team |
 | Which named cultivars and regions does v1 target? | Sets tables and priors | Product owner |
@@ -140,6 +141,12 @@ Details in `model/README.md` on `feature/model-species-head`.
 
 Newest first. One line per change that someone on Android should know about.
 
+- **2026-10-23:** PR #11 merged (`model/` pipeline): downloaders for iNaturalist, GBIF,
+  Commons, Flickr, Mendeley and Figshare; BioCLIP 2 check of Commons/Flickr labels (unchecked
+  labels never reach training); duplicate removal; export refuses a model below the bar.
+  First trained model misses the bar: sorghum vs not-sorghum 0.671 (bar 0.90), INT8 loses 14
+  points against float (bar 2). It does not load under the XNNPACK delegate, so Android must
+  treat a model that fails to load as measured-only mode. Iteration 2 is training.
 - **2026-10-23:** Team loop started for the goal "the app recognises sorghum": ML (data +
   training), Swift (bundle model in iOS + parity test) and Kotlin (Android LiteRT runner)
   engineers under one PM. Work and data live on the LaCie drive (`/Volumes/LaCie`). Licences
