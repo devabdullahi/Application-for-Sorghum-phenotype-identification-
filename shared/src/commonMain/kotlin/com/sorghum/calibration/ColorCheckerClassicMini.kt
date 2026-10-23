@@ -8,7 +8,7 @@ package com.sorghum.calibration
  * Patch order is the card's own: row by row from the top-left "dark skin" patch, with the card
  * held landscape so the neutral row (white to black) is at the bottom.
  */
-object ColorCheckerClassicMini {
+internal object ColorCheckerClassicMini {
     const val ROWS = 4
     const val COLUMNS = 6
     const val PATCH_COUNT = ROWS * COLUMNS
@@ -16,7 +16,8 @@ object ColorCheckerClassicMini {
     /**
      * Centre-to-centre distance between neighbouring patches, in mm. X-Rite lists the Mini's
      * colour chip area as 57 x 86 mm (2.25 x 3.375 in) for 4 x 6 patches: 57 / 4 = 14.25 and
-     * 86 / 6 = 14.33, so the pitch is about 14.3 mm both ways.
+     * 86 / 6 = 14.33. The two disagree, so the chip area alone cannot give the pitch; 14.3 mm is
+     * their rounded mean.
      *
      * ASSUMPTION — confirm: derived from the published chip area, not measured. Measure the
      * pitch of the team's physical cards (ruler across 6 patches) before trusting mm traits
@@ -35,8 +36,9 @@ object ColorCheckerClassicMini {
     /**
      * Reference L*a*b* (D50, 2° observer) of each patch for cards made after November 2014,
      * when X-Rite changed the pigments. Source: X-Rite (2016), "New color specifications for
-     * ColorChecker SG and Classic Charts", as tabulated by the colour-science package
-     * (`DATA_COLORCHECKER24_AFTER_NOV2014_CIE_LAB`). Older cards differ by up to a few ΔE.
+     * ColorChecker SG and Classic Charts", as tabulated by the colour-science package in its
+     * "ColorChecker24 - After November 2014" dataset (`DATA_COLORCHECKER24_AFTER_NOV2014`).
+     * Older cards differ by up to a few ΔE.
      */
     val referenceLabD50: List<LabColour> = listOf(
         LabColour(37.54, 14.37, 14.92),
