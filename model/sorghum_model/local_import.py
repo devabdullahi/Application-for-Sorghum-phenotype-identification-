@@ -1,12 +1,12 @@
 """Adds a folder of already-downloaded or team photos to the manifest.
 
-Used for the datasets the research notes list that cannot be fetched through an API
-(SorghumWeedDataset, Sorghum Disease Image Dataset, GrainSet, UQ panicle crops) and for our
-own photos (millets, no-plant board shots). Every import must name its annotator and date,
-because unverified labels are excluded from training.
+Used for public datasets once `mendeley.py` or `figshare.py` has downloaded and laid them out
+(SorghumWeedDataset, Sorghum Disease Image Dataset, GrainSet), for datasets without an API
+(UQ panicle crops) and for our own photos (millets, no-plant board shots). Every import must
+name its annotator and date, because unverified labels are excluded from training.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
 
@@ -83,3 +83,21 @@ def _group_name(relative_path: Path, group_by: GroupBy) -> str:
             "one subfolder per plant, plot or accession"
         )
     return relative_path.parts[0]
+
+
+def import_class_folders(
+    images_root: Path, data_root: Path, source: FolderSource
+) -> list[ImageRecord]:
+    """Imports every `<class>/<group>/<file>` below `images_root`, one class folder at a time.
+
+    Used for public datasets laid out by `dataset_layout`; `source.class_name` is replaced by
+    each folder's name, which must be a species class.
+    """
+    records = []
+    for class_folder in sorted(images_root.iterdir()):
+        if not class_folder.is_dir() or class_folder.name.startswith("."):
+            continue
+        records.extend(
+            import_folder(class_folder, data_root, replace(source, class_name=class_folder.name))
+        )
+    return records

@@ -114,3 +114,30 @@ class ExportSettings:
             raise ValueError("sorghum_precision_target must be in (0.5, 1)")
         if self.min_threshold_predictions < 1 or self.fixture_images < 1:
             raise ValueError("min_threshold_predictions and fixture_images must be at least 1")
+
+
+@dataclass(frozen=True)
+class PublicDatasetSettings:
+    """How public datasets without per-plant ids are grouped and sampled on import.
+
+    Attributes:
+        images_per_sequence_group: SorghumWeedDataset and the Sorghum Disease Image Dataset
+            name files with a running number ("Rust123.jpg") and publish no plant or plot id.
+            Photos taken one after another are usually of the same plant or row, so blocks of
+            this many consecutive numbers form one group and land in one split. This only
+            protects against leakage if the numbering follows the shooting order, which the
+            datasets do not state. Initial guess.
+        grain_images_per_class: GrainSet has about 100,000 sorghum and 19,000 maize kernel
+            images, all on the same belt under the same light. Importing them all would make
+            "isolated kernel on grey" the dominant sorghum view; this many per class is
+            enough for the grain view without swamping the field photos. Initial guess.
+    """
+
+    images_per_sequence_group: int = 20
+    grain_images_per_class: int = 3000
+
+    def __post_init__(self) -> None:
+        if self.images_per_sequence_group < 1:
+            raise ValueError("images_per_sequence_group must be at least 1")
+        if self.grain_images_per_class < 1:
+            raise ValueError("grain_images_per_class must be at least 1")
