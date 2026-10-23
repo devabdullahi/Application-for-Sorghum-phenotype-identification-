@@ -69,14 +69,18 @@ def resolve_near_duplicates(
     records: list[ImageRecord],
     hashes: dict[str, int | None],
     max_distance: int,
+    exempt_sources: tuple[str, ...] = (),
 ) -> NearDuplicateResult:
     """Merges the groups of same-class near-duplicates and drops conflicting ones.
 
     `hashes` maps sha256 to dHash; None means the image could not be read, and such a record
     is dropped (training would fail on it anyway). Two photos are near-duplicates when their
-    hashes differ in at most `max_distance` bits.
+    hashes differ in at most `max_distance` bits. Records from `exempt_sources` are kept as
+    they are and never compared (see SplitSettings.near_duplicate_exempt_sources).
     """
-    readable = [r for r in records if hashes.get(r.sha256) is not None]
+    exempt = [r for r in records if r.source in exempt_sources and hashes.get(r.sha256) is not None]
+    compared = [r for r in records if r.source not in exempt_sources]
+    readable = [r for r in compared if hashes.get(r.sha256) is not None]
     dropped = [r for r in records if hashes.get(r.sha256) is None]
 
     conflicting: set[int] = set()
@@ -96,7 +100,7 @@ def resolve_near_duplicates(
         group = _find(group_parent, record.group_id)
         kept.append(record if group == record.group_id else replace(record, group_id=group))
     merged_groups = sum(1 for group in group_parent if _find(group_parent, group) != group)
-    return NearDuplicateResult(kept, dropped, merged_groups)
+    return NearDuplicateResult(kept + exempt, dropped, merged_groups)
 
 
 def load_hashes(

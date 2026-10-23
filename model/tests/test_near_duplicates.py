@@ -50,3 +50,15 @@ def test_hashes_are_cached_by_checksum(tmp_path):
     assert load_hashes(records, tmp_path, fake_hash) == {records[0].sha256: 42}
     assert load_hashes(records, tmp_path, fake_hash) == {records[0].sha256: 42}
     assert len(calls) == 1
+
+
+def test_exempt_sources_are_kept_and_never_compared():
+    records = [
+        make_record(source="grainset-sorghum", source_id="1", sha256="1" * 64, group_id="s"),
+        make_record(source="grainset-maize", source_id="2", sha256="2" * 64, group_id="m", class_name="maize"),
+        make_record(source="inaturalist", source_id="3", sha256="3" * 64, group_id="i", class_name="maize"),
+    ]
+    hashes = {r.sha256: 5 for r in records}  # identical hashes
+    result = resolve_near_duplicates(records, hashes, 4, exempt_sources=("grainset-sorghum", "grainset-maize"))
+    assert sorted(r.source_id for r in result.records) == ["1", "2", "3"]
+    assert result.dropped == [] and result.merged_groups == 0

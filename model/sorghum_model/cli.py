@@ -552,7 +552,10 @@ def _run_split(arguments) -> None:
     settings = SplitSettings()
     loaded = _load_manifests(arguments.manifests)
     result = resolve_near_duplicates(
-        loaded, load_hashes(loaded, arguments.data_root), settings.near_duplicate_max_distance
+        loaded,
+        load_hashes(loaded, arguments.data_root),
+        settings.near_duplicate_max_distance,
+        settings.near_duplicate_exempt_sources,
     )
     records = result.records
     print(

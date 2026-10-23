@@ -62,7 +62,8 @@ tool downloads photos.
   Pl@ntNet "observations" and observation.org records are kept and named in `label_source`.
 - **Duplicates across sources:** Commons files imported from iNaturalist or Flickr are
   skipped on download. At split time a 64-bit dHash finds near-duplicates across all sources
-  (Hamming distance <= 4, `SplitSettings`): same-class copies put their groups together into
+  (Hamming distance <= 4, `SplitSettings`; GrainSet kernels are exempt because their hashes
+  barely differ): same-class copies put their groups together into
   one group, copies with different labels are both dropped (listed as `excluded` in the split
   manifest).
 - **Ship bar** (`ExportSettings`): held-out sorghum-vs-not accuracy >= 0.90 and

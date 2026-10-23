@@ -27,12 +27,19 @@ class SplitSettings:
             many bits are treated as the same picture (`near_duplicates.py`). Resizing and
             JPEG recompression flip a few bits; different photos of one plant usually differ
             in 10 or more. Initial guess, tune by looking at the pairs it finds.
+        near_duplicate_exempt_sources: sources left out of the near-duplicate pass. GrainSet
+            kernels are single grains centred on the same grey belt, so their 9x8 dHashes
+            barely differ: on the first real split (2026-10-23) they gave 1.1 million false
+            "near-duplicate" pairs, most of them maize against sorghum, and 4,800 kernels
+            were dropped as conflicting. Their copies are not published elsewhere, so only
+            exact copies (sha256, `merge_manifests`) need catching there.
     """
 
     validation_fraction: float = 0.15
     test_fraction: float = 0.15
     salt: str = "species-v1"
     near_duplicate_max_distance: int = 4
+    near_duplicate_exempt_sources: tuple[str, ...] = ("grainset-sorghum", "grainset-maize")
 
     def __post_init__(self) -> None:
         if not 0 < self.validation_fraction < 0.5:
