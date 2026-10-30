@@ -565,3 +565,59 @@ class TraitTrainingSettings:
             raise ValueError("dropout must be in [0, 1)")
         if self.first_fine_tuned_layer == "":
             raise ValueError("first_fine_tuned_layer must be a layer name or None")
+
+
+@dataclass(frozen=True)
+class SpeciesDecisionSettings:
+    """The app's "not sorghum" / "unsure" / "no plant" thresholds, for offline evaluation.
+
+    A copy of `SpeciesSettings` in `shared/.../species/SpeciesGate.kt`: the defaults must equal
+    the Kotlin defaults, so an evaluation here scores the decision the phone would show. The
+    sorghum threshold and the temperature are not here; they come from `traits-vN.json`.
+
+    Attributes:
+        min_not_sorghum_probability: 1 - P(sorghum) needed before saying "not sorghum".
+        min_named_look_alike_probability: top look-alike probability needed to name it.
+        min_no_plant_probability: `no_plant` probability needed to say "no plant".
+    """
+
+    min_not_sorghum_probability: float = 0.7
+    min_named_look_alike_probability: float = 0.6
+    min_no_plant_probability: float = 0.6
+
+    def __post_init__(self) -> None:
+        for name in ("min_not_sorghum_probability", "min_named_look_alike_probability", "min_no_plant_probability"):
+            if not 0 <= getattr(self, name) <= 1:
+                raise ValueError(f"{name} must be in [0, 1]")
+
+
+@dataclass(frozen=True)
+class MfwdEvaluationSettings:
+    """How single-plant crops are cut from MFWD trays (Genze et al. 2024) and grouped by age.
+
+    MFWD is an external check of the species gate only; none of its photos is ever trained on.
+
+    Attributes:
+        crop_margin_fraction: margin added on each side of the plant's box, as a fraction of the
+            box's long side, before squaring. 0.1 keeps leaf tips that the box clips and adds a
+            little soil, like an app photo framed on one plant. Not tuned.
+        min_box_side_px: a box whose long side (in the 2456 x 2058 tray image) is below this is
+            skipped. MFWD boxes start at about 20 px, i.e. a cotyledon that becomes a blur of
+            green after upscaling to 224 px; no one could tell sorghum from it. 64 px is the
+            smallest box with several leaf-widths of detail. Applied to every species, so the
+            comparison between them stays fair. Initial guess; results by box size are reported.
+        stage_bin_days: width of the growth-stage bins in days since the tray's first
+            annotated image (MFWD publishes no sowing date). 7 gives weekly bins.
+    """
+
+    crop_margin_fraction: float = 0.1
+    min_box_side_px: int = 64
+    stage_bin_days: int = 7
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.crop_margin_fraction <= 1:
+            raise ValueError("crop_margin_fraction must be in [0, 1]")
+        if not 8 <= self.min_box_side_px <= 1024:
+            raise ValueError("min_box_side_px must be in [8, 1024]")
+        if not 1 <= self.stage_bin_days <= 60:
+            raise ValueError("stage_bin_days must be in [1, 60]")

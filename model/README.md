@@ -561,6 +561,107 @@ crops of the panicle and of the grain (the app's own photo types) and a colour c
 more than more epochs. A second GRIN reading per accession would also measure label agreement,
 the ceiling these heads are scored against.
 
+## External check: MFWD (traits-v2, 2026-10-30)
+
+An independent check of the shipped species gate (`traits-v2`, run v2-3) on a source it
+never saw: the **Moving Fields Weed Dataset** (MFWD). Credit: Genze, N., Vahl, W.K., Groth,
+J. et al. *Manually annotated and curated Dataset of diverse Weed Species in Maize and Sorghum
+for Computer Vision.* Sci Data 11, 109 (2024), <https://doi.org/10.1038/s41597-024-02945-6>,
+CC BY 4.0; code at <https://github.com/grimmlab/MFWD> (MIT). This is a **domain-shift
+check, not a ship gate**, and it is evaluation only: no MFWD photo is in any manifest or split.
+
+**What MFWD is.** Top-down greenhouse photos (2454 x 2056) of trays of seedlings and young
+plants, taken many times a day, with a box per plant in `gt.csv`. Every plant is at the
+seedling stage (cotyledon to about five leaves, on dark potting soil). The app's photos are
+leaves, panicles and grain on a board, and the training sorghum is mostly field plants,
+panicles, grain and diseased leaves. So MFWD tests a photo type the app does not ask for. Read
+the numbers as "how the gate behaves far outside its domain", not as app accuracy.
+
+**Method** (`sorghum_model/mfwd.py`, commands `mfwd-predict` and `mfwd-report`):
+
+- Sample (13.1 GB of jpeg zips, 141 trays): 30 sorghum trays (5 for each of the 6
+  varieties, evenly spaced tray ids), 40 of 76 maize trays (both varieties), every tray of the
+  grass weeds ECHCG, AGRRE, ALOMY and POAAN, and 2 trays each of the broadleaf weeds CHEAL,
+  SOLNI, VIOAR, GALAP, ARTVU and STEME. Trays hold other species too, and every annotated plant
+  in a downloaded tray is scored. The unidentified "Weed" label is skipped.
+- Crop: a square around each box, with 10% of its long side as margin on every side, shifted
+  to stay inside the photo. Then the app's preprocessing: centre square (a no-op here), bilinear
+  resize to 224, uint8 input. **Size rule:** boxes with a long side under 64 px are skipped
+  for every species. MFWD boxes start at about 20 px, which is a blur after upscaling
+  (`MfwdEvaluationSettings`).
+- Decision: the INT8 TFLite model (TF 2.17 runtime, 2 threads), softmax with the metadata's
+  temperature (1.685), then the app's rule from `SpeciesGate.kt`: "sorghum" when P(sorghum)
+  >= 0.199, otherwise not sorghum, unsure or no plant (`SpeciesDecisionSettings` equals the
+  Kotlin defaults). Only "sorghum" counts as a positive.
+- Growth stage: MFWD publishes no sowing date, so stage is **days since the tray's first
+  annotated photo** (about emergence), in weekly bins.
+- Plants: MFWD tracks each plant over many photos (`track_id`). A plant is called sorghum when
+  more than half its crops are. Per-stage and per-size plant rates use only that bin's crops.
+
+**Results** (30,877 crops of 1,478 plants):
+
+| Level | Accuracy | Precision | Recall | n |
+|---|---|---|---|---|
+| Per photo (crop) | 0.666 | 0.439 | 0.489 | 30,877 (9,066 sorghum) |
+| Per plant | 0.737 | 0.146 | 0.402 | 1,478 (132 sorghum) |
+
+Precision and accuracy depend on this sample's species mix. The rates per group below do not.
+
+| Group | Crops | Plants | Called "sorghum", per photo | per plant |
+|---|---|---|---|---|
+| Sorghum (6 varieties; recall) | 9,066 | 132 | **0.489** | **0.402** |
+| Maize (ZEAKJ, ZEALP) | 2,087 | 142 | **0.413** | **0.430** |
+| Grass weeds (ECHCG, AGRRE, ALOMY, POAAN) | 16,571 | 1,069 | **0.210** | **0.182** |
+| Broadleaf weeds | 3,153 | 135 | 0.420 | 0.393 |
+
+False "sorghum" per code (photo / plant): ECHCG 0.320 / 0.313, ALOMY 0.218 / 0.190, AGRRE
+0.166 / 0.107, POAAN 0.136 / 0.069, ZEALP 0.476 / 0.515, ZEAKJ 0.345 / 0.205. Sorghum recall
+by variety ranges from 0.440 (SORFR) to 0.595 (SORHA) per photo.
+
+By growth stage, the share called sorghum per photo (per plant):
+
+| Days since first photo | Sorghum (recall) | Maize | Grass weeds |
+|---|---|---|---|
+| 0-6 | 0.912 (0.940) | 0.529 (0.553) | 0.394 (0.404) |
+| 7-13 | 0.895 (0.938) | 0.353 (0.247) | 0.224 (0.171) |
+| 14-20 | 0.556 (0.557) | 0.135 (0.000) | 0.147 (0.118) |
+| 21-27 | 0.304 (0.233) | 0.900 (0.500), 20 crops | 0.133 (0.123) |
+| 28-34 | 0.227 (0.175) | 2 crops | 0.155 (0.171) |
+| 35+ | 0.178 (0.061), 1,054 crops | none | 0.134 (0.079) |
+
+By box size (long side), the share called sorghum per photo: sorghum 0.954 (64-127 px), 0.975
+(128-255), 0.457 (256-511), 0.078 (>= 512); grass weeds 0.512, 0.219, 0.045, 0.018; maize
+0.521, 0.520, 0.544, 0.275; broadleaf weeds 0.800, 0.479, 0.105, 0.010.
+
+**Worst confusions.**
+
+1. **Small seedlings of any species are called sorghum.** Below 128 px, 95% of sorghum is
+   called sorghum, but so are 51% of grass weeds, 52% of maize and 80% of broadleaf weeds. At
+   that size the gate does not separate species. It says "sorghum" to a small green shoot.
+2. **Sorghum with three or more leaves, seen from above, is missed.** At >= 512 px only 7.8%
+   is called sorghum. Across all sorghum crops the top class is maize for 4,424 of 9,066,
+   johnson grass for 1,858 and sorghum for only 2,770.
+3. **Maize coleoptiles and first leaves** are called sorghum in 41% of maize crops (ZEALP
+   48%). Maize is the dangerous look-alike. Most of the other 59% are named as maize
+   (1,015 crops).
+
+**Conclusion.** Outside its domain (top-down greenhouse seedlings), the species gate does not
+tell sorghum from maize or from grass weeds: sorghum recall is 0.49 and maize false "sorghum"
+is 0.41. This does not contradict the in-domain test result (0.932). It shows the gate must
+not be trusted on seedlings, and that a photo of a seedling must not reach cultivar matching
+on the gate's word alone. If the app is ever meant to take seedling photos, it needs
+top-down seedling training data (MFWD's licence allows that, but then MFWD can no longer be
+the external check), or a capture rule that refuses them. Predictions and the full report:
+`/Volumes/LaCie/sorghum-model/data/external/mfwd/eval-traits-v2/` (not in git).
+
+```sh
+# TF 2.17 environment (see "Workflow"); data under data/external/mfwd/raw (gt.csv, jpegs/<EPPO>/<tray>.zip).
+sorghum-model mfwd-predict --ground-truth .../raw/gt.csv --jpegs-dir .../raw/jpegs \
+  --model-dir /Volumes/LaCie/sorghum-model/runs/v2-3/export --version 2 \
+  --out .../eval-traits-v2/predictions.csv --threads 2
+sorghum-model mfwd-report --predictions .../eval-traits-v2/predictions.csv --out .../eval-traits-v2/report.json
+```
+
 ## Setup
 
 Needs [uv](https://docs.astral.sh/uv/). TensorFlow needs Python 3.11 or 3.12.
