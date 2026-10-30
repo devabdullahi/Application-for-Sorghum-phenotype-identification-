@@ -49,3 +49,12 @@ def test_rejects_an_unknown_backbone():
 
     with pytest.raises(ValueError):
         TrainingSettings(backbone="ResNet50")
+
+
+def test_lab_datasets_skip_the_near_duplicate_pass():
+    # Their close-ups hash alike and chain into false groups (SplitSettings docstring).
+    assert set(SplitSettings().near_duplicate_exempt_sources) == {
+        "grainset-sorghum",
+        "grainset-maize",
+        "sorghum-disease-2024",
+    }

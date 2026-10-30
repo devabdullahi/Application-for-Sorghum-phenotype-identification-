@@ -33,14 +33,23 @@ class SplitSettings:
             barely differ: on the first real split (2026-10-23) they gave 1.1 million false
             "near-duplicate" pairs, most of them maize against sorghum, and 4,800 kernels
             were dropped as conflicting. Their copies are not published elsewhere, so only
-            exact copies (sha256, `merge_manifests`) need catching there.
+            exact copies (sha256, `merge_manifests`) need catching there. The Sorghum Disease
+            Image Dataset is exempt for the same reason (2026-10-30): its lab close-ups of
+            diseased leaves and panicles chained into one near-duplicate group of 1,499
+            photos (with 3 iNaturalist photos), against the dataset's blocks of 20 files,
+            and that whole group fell into the test split (32% of it). Another 194 of its
+            photos were dropped as "conflicting" with other classes. Both are false matches.
     """
 
     validation_fraction: float = 0.15
     test_fraction: float = 0.15
     salt: str = "species-v1"
     near_duplicate_max_distance: int = 4
-    near_duplicate_exempt_sources: tuple[str, ...] = ("grainset-sorghum", "grainset-maize")
+    near_duplicate_exempt_sources: tuple[str, ...] = (
+        "grainset-sorghum",
+        "grainset-maize",
+        "sorghum-disease-2024",
+    )
 
     def __post_init__(self) -> None:
         if not 0 < self.validation_fraction < 0.5:

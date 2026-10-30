@@ -78,7 +78,7 @@ def resolve_near_duplicates(
     hashes differ in at most `max_distance` bits. Records from `exempt_sources` are kept as
     they are and never compared (see SplitSettings.near_duplicate_exempt_sources).
     """
-    # Exempt records (GrainSet) are compared with nothing, not even other sources: a kernel
+    # Exempt records (GrainSet, the Sorghum Disease dataset) are compared with nothing, not even other sources: a kernel
     # on GrainSet's grey belt hashes like every other kernel and like Commons photos of loose
     # grain, so any match would be false. Their copies are never re-hosted elsewhere, and
     # exact copies are still caught by sha256 in `merge_manifests`.
