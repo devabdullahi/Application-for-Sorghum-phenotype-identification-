@@ -151,6 +151,7 @@ Details in `model/README.md`.
 
 Newest first. One line per change that someone on Android should know about.
 
+- **2026-10-30:** Model-completion audit (T10, #33): [model-status.md](architecture/model-status.md) lists each component as complete, deferred, blocked or not started. Species gate and naive Bayes code are complete; learned trait heads (#35), measured readers and `cultivars-v1.json` are not started; race-v1 is deferred (#37, #38). GRIN descriptors can feed the first table without Genesys, but only 9.9% of fully described accessions have a unique 6-trait profile (R1).
 - **2026-10-30:** Race model race-v1 trained and scored once on test (T9, #32,
   `feature/race-model-v1`): **89% gate missed**. INT8 selective group-aware race accuracy 0.768
   at coverage 0.797 (gate 0.89 at >= 0.80), 0.715 at 0.912; +0.275 over the planting baseline
