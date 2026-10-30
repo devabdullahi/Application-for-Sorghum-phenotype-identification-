@@ -1,0 +1,858 @@
+{
+  "backbone": "MobileNetV2 1.0 (ImageNet weights), one fine-tuned network per output (ADR-0012)",
+  "belowBar": false,
+  "createdOn": "2026-10-30",
+  "headOrder": [
+    "species",
+    "basicRace"
+  ],
+  "heads": {
+    "basicRace": {
+      "answerRule": {
+        "groupProbabilityMass": 0.89,
+        "maxGroupSize": 2
+      },
+      "evaluation": {
+        "converterTensorflowVersion": "2.17.1",
+        "createdOn": "2026-10-30",
+        "gate": {
+          "max_int8_accuracy_delta": 0.02,
+          "min_coverage": 0.8,
+          "min_points_over_baseline": 0.1,
+          "min_selective_accuracy": 0.89,
+          "passed": false,
+          "problems": [
+            "coverage 0.793 < 0.80"
+          ]
+        },
+        "input": {
+          "quantization": {
+            "scale": 1.0,
+            "zero_point": 0
+          },
+          "sizePx": 224
+        },
+        "intermediatesTestInt8": {
+          "byRace": {
+            "Caudatum-bicolor": {
+              "coverage": 0.6176470588235294,
+              "parentInGroupSelectiveAccuracy": 0.9523809523809523,
+              "photos": 34
+            },
+            "Durra-bicolor": {
+              "coverage": 0.7027027027027027,
+              "parentInGroupSelectiveAccuracy": 0.9807692307692307,
+              "photos": 74
+            },
+            "Durra-caudatum": {
+              "coverage": 0.6307692307692307,
+              "parentInGroupSelectiveAccuracy": 1.0,
+              "photos": 65
+            },
+            "Guinea-bicolor": {
+              "coverage": 0.7777777777777778,
+              "parentInGroupSelectiveAccuracy": 0.8571428571428571,
+              "photos": 18
+            },
+            "Guinea-caudatum": {
+              "coverage": 0.6744186046511628,
+              "parentInGroupSelectiveAccuracy": 0.9310344827586207,
+              "photos": 43
+            },
+            "Guinea-durra": {
+              "coverage": 0.8461538461538461,
+              "parentInGroupSelectiveAccuracy": 1.0,
+              "photos": 13
+            },
+            "Guinea-kafir": {
+              "coverage": 0.5333333333333333,
+              "parentInGroupSelectiveAccuracy": 0.25,
+              "photos": 15
+            },
+            "Kafir-bicolor": {
+              "coverage": 0.14285714285714285,
+              "parentInGroupSelectiveAccuracy": 1.0,
+              "photos": 7
+            },
+            "Kafir-caudatum": {
+              "coverage": 0.6551724137931034,
+              "parentInGroupSelectiveAccuracy": 0.9473684210526315,
+              "photos": 58
+            },
+            "Kafir-durra": {
+              "coverage": 0.631578947368421,
+              "parentInGroupSelectiveAccuracy": 0.9722222222222222,
+              "photos": 57
+            }
+          },
+          "coverage": 0.6536458333333334,
+          "parentInGroupSelectiveAccuracy": 0.9402390438247012,
+          "photos": 384,
+          "rule": "hit when a parent basic race of the true intermediate is in the returned group"
+        },
+        "modelVersion": 1,
+        "operatingPoints": {
+          "0.80": {
+            "rule": {
+              "group_probability_mass": 0.89,
+              "max_group_size": 2
+            },
+            "secondaryBasicRaceTestInt8": {
+              "coverage": 0.7932098765432098,
+              "photos": 648,
+              "rule": "hit when a parent basic race of the true race is among the parents of the returned group",
+              "selectiveAccuracy": 0.9649805447470817
+            },
+            "testFloat": {
+              "accuracyOverAllPhotos": 0.7746913580246914,
+              "coverage": 0.808641975308642,
+              "inGroupRecallByRace": {
+                "Bicolor": 0.4,
+                "Caudatum": 0.8382749326145552,
+                "Durra": 0.8429319371727748,
+                "Guinea": 0.38461538461538464,
+                "Kafir": 0.22727272727272727
+              },
+              "meanGroupSize": 1.3244274809160306,
+              "photos": 648,
+              "selectiveAccuracy": 0.9580152671755725,
+              "supportByRace": {
+                "Bicolor": {
+                  "accessions": 24,
+                  "photos": 25
+                },
+                "Caudatum": {
+                  "accessions": 365,
+                  "photos": 371
+                },
+                "Durra": {
+                  "accessions": 181,
+                  "photos": 191
+                },
+                "Guinea": {
+                  "accessions": 39,
+                  "photos": 39
+                },
+                "Kafir": {
+                  "accessions": 22,
+                  "photos": 22
+                }
+              }
+            },
+            "testInt8": {
+              "accuracyOverAllPhotos": 0.7654320987654321,
+              "coverage": 0.7932098765432098,
+              "inGroupRecallByRace": {
+                "Bicolor": 0.44,
+                "Caudatum": 0.8247978436657682,
+                "Durra": 0.8219895287958116,
+                "Guinea": 0.46153846153846156,
+                "Kafir": 0.18181818181818182
+              },
+              "meanGroupSize": 1.2859922178988328,
+              "photos": 648,
+              "selectiveAccuracy": 0.9649805447470817,
+              "supportByRace": {
+                "Bicolor": {
+                  "accessions": 24,
+                  "photos": 25
+                },
+                "Caudatum": {
+                  "accessions": 365,
+                  "photos": 371
+                },
+                "Durra": {
+                  "accessions": 181,
+                  "photos": 191
+                },
+                "Guinea": {
+                  "accessions": 39,
+                  "photos": 39
+                },
+                "Kafir": {
+                  "accessions": 22,
+                  "photos": 22
+                }
+              }
+            },
+            "validationInt8": {
+              "accuracyOverAllPhotos": 0.8031007751937984,
+              "coverage": 0.8325581395348837,
+              "inGroupRecallByRace": {
+                "Bicolor": 0.2857142857142857,
+                "Caudatum": 0.8914285714285715,
+                "Durra": 0.8348214285714286,
+                "Guinea": 0.52,
+                "Kafir": 0.0
+              },
+              "meanGroupSize": 1.2960893854748603,
+              "photos": 645,
+              "selectiveAccuracy": 0.9646182495344506,
+              "supportByRace": {
+                "Bicolor": {
+                  "accessions": 21,
+                  "photos": 21
+                },
+                "Caudatum": {
+                  "accessions": 342,
+                  "photos": 350
+                },
+                "Durra": {
+                  "accessions": 197,
+                  "photos": 224
+                },
+                "Guinea": {
+                  "accessions": 25,
+                  "photos": 25
+                },
+                "Kafir": {
+                  "accessions": 25,
+                  "photos": 25
+                }
+              }
+            }
+          },
+          "0.90": {
+            "rule": {
+              "group_probability_mass": 0.81,
+              "max_group_size": 2
+            },
+            "secondaryBasicRaceTestInt8": {
+              "coverage": 0.904320987654321,
+              "photos": 648,
+              "rule": "hit when a parent basic race of the true race is among the parents of the returned group",
+              "selectiveAccuracy": 0.9453924914675768
+            },
+            "testFloat": {
+              "accuracyOverAllPhotos": 0.8626543209876543,
+              "coverage": 0.9120370370370371,
+              "inGroupRecallByRace": {
+                "Bicolor": 0.48,
+                "Caudatum": 0.9083557951482479,
+                "Durra": 0.93717277486911,
+                "Guinea": 0.5641025641025641,
+                "Kafir": 0.4090909090909091
+              },
+              "meanGroupSize": 1.27580372250423,
+              "photos": 648,
+              "selectiveAccuracy": 0.9458544839255499,
+              "supportByRace": {
+                "Bicolor": {
+                  "accessions": 24,
+                  "photos": 25
+                },
+                "Caudatum": {
+                  "accessions": 365,
+                  "photos": 371
+                },
+                "Durra": {
+                  "accessions": 181,
+                  "photos": 191
+                },
+                "Guinea": {
+                  "accessions": 39,
+                  "photos": 39
+                },
+                "Kafir": {
+                  "accessions": 22,
+                  "photos": 22
+                }
+              }
+            },
+            "testInt8": {
+              "accuracyOverAllPhotos": 0.8549382716049383,
+              "coverage": 0.904320987654321,
+              "inGroupRecallByRace": {
+                "Bicolor": 0.56,
+                "Caudatum": 0.9110512129380054,
+                "Durra": 0.900523560209424,
+                "Guinea": 0.6410256410256411,
+                "Kafir": 0.22727272727272727
+              },
+              "meanGroupSize": 1.2627986348122866,
+              "photos": 648,
+              "selectiveAccuracy": 0.9453924914675768,
+              "supportByRace": {
+                "Bicolor": {
+                  "accessions": 24,
+                  "photos": 25
+                },
+                "Caudatum": {
+                  "accessions": 365,
+                  "photos": 371
+                },
+                "Durra": {
+                  "accessions": 181,
+                  "photos": 191
+                },
+                "Guinea": {
+                  "accessions": 39,
+                  "photos": 39
+                },
+                "Kafir": {
+                  "accessions": 22,
+                  "photos": 22
+                }
+              }
+            },
+            "validationInt8": {
+              "accuracyOverAllPhotos": 0.8821705426356589,
+              "coverage": 0.9348837209302325,
+              "inGroupRecallByRace": {
+                "Bicolor": 0.5714285714285714,
+                "Caudatum": 0.9457142857142857,
+                "Durra": 0.9151785714285714,
+                "Guinea": 0.72,
+                "Kafir": 0.12
+              },
+              "meanGroupSize": 1.2537313432835822,
+              "photos": 645,
+              "selectiveAccuracy": 0.9436152570480929,
+              "supportByRace": {
+                "Bicolor": {
+                  "accessions": 21,
+                  "photos": 21
+                },
+                "Caudatum": {
+                  "accessions": 342,
+                  "photos": 350
+                },
+                "Durra": {
+                  "accessions": 197,
+                  "photos": 224
+                },
+                "Guinea": {
+                  "accessions": 25,
+                  "photos": 25
+                },
+                "Kafir": {
+                  "accessions": 25,
+                  "photos": 25
+                }
+              }
+            }
+          }
+        },
+        "photos": {
+          "test": 648,
+          "train": 2930,
+          "validation": 645
+        },
+        "plantingShortcutCheck": {
+          "test": [
+            {
+              "coverage": 0.8898305084745762,
+              "gainOverBaseline": 0.10064568200161428,
+              "photo_count": 118,
+              "planting_baseline_accuracy": 0.8898305084745762,
+              "planting_id": "SORGHUM.IMAGE.ETHIOPIAN.1998-1999",
+              "selective_accuracy": 0.9904761904761905
+            },
+            {
+              "coverage": 0.47474747474747475,
+              "gainOverBaseline": 0.31313131313131315,
+              "photo_count": 99,
+              "planting_baseline_accuracy": 0.6868686868686869,
+              "planting_id": "SORGHUM.IMAGE.ISABELA.2010",
+              "selective_accuracy": 1.0
+            },
+            {
+              "coverage": 1.0,
+              "gainOverBaseline": 1.0,
+              "photo_count": 1,
+              "planting_baseline_accuracy": 0.0,
+              "planting_id": "SORGHUM.IMAGE.SEED",
+              "selective_accuracy": 1.0
+            },
+            {
+              "coverage": 0.4,
+              "gainOverBaseline": 0.09999999999999998,
+              "photo_count": 10,
+              "planting_baseline_accuracy": 0.4,
+              "planting_id": "SORGHUM.IMAGE.SP41.2006",
+              "selective_accuracy": 0.5
+            },
+            {
+              "coverage": 0.4375,
+              "gainOverBaseline": 0.6875,
+              "photo_count": 16,
+              "planting_baseline_accuracy": 0.3125,
+              "planting_id": "SORGHUM.IMAGE.SP42.2006",
+              "selective_accuracy": 1.0
+            },
+            {
+              "coverage": 0.5897435897435898,
+              "gainOverBaseline": 0.31326644370122636,
+              "photo_count": 39,
+              "planting_baseline_accuracy": 0.5128205128205128,
+              "planting_id": "SORGHUM.IMAGE.STC.2002",
+              "selective_accuracy": 0.8260869565217391
+            },
+            {
+              "coverage": 0.631578947368421,
+              "gainOverBaseline": 0.631578947368421,
+              "photo_count": 19,
+              "planting_baseline_accuracy": 0.3684210526315789,
+              "planting_id": "SORGHUM.IMAGE.STC.2005",
+              "selective_accuracy": 1.0
+            },
+            {
+              "coverage": 0.6774193548387096,
+              "gainOverBaseline": 0.09831029185867901,
+              "photo_count": 31,
+              "planting_baseline_accuracy": 0.8064516129032258,
+              "planting_id": "SORGHUM.IMAGE.STC.2007",
+              "selective_accuracy": 0.9047619047619048
+            },
+            {
+              "coverage": 0.9331210191082803,
+              "gainOverBaseline": 0.09985652485815522,
+              "photo_count": 314,
+              "planting_baseline_accuracy": 0.8694267515923567,
+              "planting_id": "SORGHUM.IMAGE.STC1993.SUDAN",
+              "selective_accuracy": 0.9692832764505119
+            },
+            {
+              "coverage": 1.0,
+              "gainOverBaseline": 0.0,
+              "photo_count": 1,
+              "planting_baseline_accuracy": 1.0,
+              "planting_id": "SORGHUM.PUERTO.VALLARTA.2012",
+              "selective_accuracy": 1.0
+            }
+          ],
+          "validation": [
+            {
+              "coverage": 0.8859649122807017,
+              "gainOverBaseline": 0.050373458398471405,
+              "photo_count": 114,
+              "planting_baseline_accuracy": 0.9298245614035088,
+              "planting_id": "SORGHUM.IMAGE.ETHIOPIAN.1998-1999",
+              "selective_accuracy": 0.9801980198019802
+            },
+            {
+              "coverage": 0.4936708860759494,
+              "gainOverBaseline": 0.36611489776046746,
+              "photo_count": 79,
+              "planting_baseline_accuracy": 0.5569620253164557,
+              "planting_id": "SORGHUM.IMAGE.ISABELA.2010",
+              "selective_accuracy": 0.9230769230769231
+            },
+            {
+              "coverage": 1.0,
+              "gainOverBaseline": 0.5,
+              "photo_count": 2,
+              "planting_baseline_accuracy": 0.5,
+              "planting_id": "SORGHUM.IMAGE.SEED",
+              "selective_accuracy": 1.0
+            },
+            {
+              "coverage": 0.5,
+              "gainOverBaseline": 0.5,
+              "photo_count": 6,
+              "planting_baseline_accuracy": 0.5,
+              "planting_id": "SORGHUM.IMAGE.SP41.2006",
+              "selective_accuracy": 1.0
+            },
+            {
+              "coverage": 0.4375,
+              "gainOverBaseline": 0.5446428571428571,
+              "photo_count": 16,
+              "planting_baseline_accuracy": 0.3125,
+              "planting_id": "SORGHUM.IMAGE.SP42.2006",
+              "selective_accuracy": 0.8571428571428571
+            },
+            {
+              "coverage": 0.6862745098039216,
+              "gainOverBaseline": 0.3350140056022409,
+              "photo_count": 51,
+              "planting_baseline_accuracy": 0.6078431372549019,
+              "planting_id": "SORGHUM.IMAGE.STC.2002",
+              "selective_accuracy": 0.9428571428571428
+            },
+            {
+              "coverage": 0.7407407407407407,
+              "gainOverBaseline": 0.37037037037037035,
+              "photo_count": 27,
+              "planting_baseline_accuracy": 0.6296296296296297,
+              "planting_id": "SORGHUM.IMAGE.STC.2005",
+              "selective_accuracy": 1.0
+            },
+            {
+              "coverage": 0.7837837837837838,
+              "gainOverBaseline": 0.13979496738117425,
+              "photo_count": 37,
+              "planting_baseline_accuracy": 0.7567567567567568,
+              "planting_id": "SORGHUM.IMAGE.STC.2007",
+              "selective_accuracy": 0.896551724137931
+            },
+            {
+              "coverage": 0.9616613418530351,
+              "gainOverBaseline": 0.09163278953010734,
+              "photo_count": 313,
+              "planting_baseline_accuracy": 0.8817891373801917,
+              "planting_id": "SORGHUM.IMAGE.STC1993.SUDAN",
+              "selective_accuracy": 0.973421926910299
+            }
+          ]
+        },
+        "races": [
+          "Bicolor",
+          "Caudatum",
+          "Durra",
+          "Guinea",
+          "Kafir"
+        ],
+        "testBaselines": {
+          "majority": {
+            "accuracyOverAllPhotos": 0.5725308641975309,
+            "coverage": 1.0,
+            "inGroupRecallByRace": {
+              "Bicolor": 0.0,
+              "Caudatum": 1.0,
+              "Durra": 0.0,
+              "Guinea": 0.0,
+              "Kafir": 0.0
+            },
+            "meanGroupSize": 1.0,
+            "photos": 648,
+            "selectiveAccuracy": 0.5725308641975309,
+            "supportByRace": {
+              "Bicolor": {
+                "accessions": 24,
+                "photos": 25
+              },
+              "Caudatum": {
+                "accessions": 365,
+                "photos": 371
+              },
+              "Durra": {
+                "accessions": 181,
+                "photos": 191
+              },
+              "Guinea": {
+                "accessions": 39,
+                "photos": 39
+              },
+              "Kafir": {
+                "accessions": 22,
+                "photos": 22
+              }
+            }
+          },
+          "planting": {
+            "accuracyOverAllPhotos": 0.7839506172839507,
+            "coverage": 1.0,
+            "inGroupRecallByRace": {
+              "Bicolor": 0.04,
+              "Caudatum": 0.9299191374663073,
+              "Durra": 0.8481675392670157,
+              "Guinea": 0.0,
+              "Kafir": 0.0
+            },
+            "meanGroupSize": 1.0,
+            "photos": 648,
+            "selectiveAccuracy": 0.7839506172839507,
+            "supportByRace": {
+              "Bicolor": {
+                "accessions": 24,
+                "photos": 25
+              },
+              "Caudatum": {
+                "accessions": 365,
+                "photos": 371
+              },
+              "Durra": {
+                "accessions": 181,
+                "photos": 191
+              },
+              "Guinea": {
+                "accessions": 39,
+                "photos": 39
+              },
+              "Kafir": {
+                "accessions": 22,
+                "photos": 22
+              }
+            }
+          }
+        },
+        "testEce": {
+          "float": {
+            "afterTemperature": 0.03449017692495276,
+            "beforeTemperature": 0.039948550363381685
+          },
+          "int8": {
+            "afterTemperature": 0.03020618501820683,
+            "beforeTemperature": 0.04534815601360652
+          }
+        },
+        "testTop1": {
+          "float": 0.8580246913580247,
+          "int8": 0.8611111111111112
+        }
+      },
+      "experimental": true,
+      "meetsAccuracyGoal": false,
+      "output": "logits",
+      "outputIndex": 1,
+      "races": [
+        "Bicolor",
+        "Caudatum",
+        "Durra",
+        "Guinea",
+        "Kafir"
+      ],
+      "sourceModel": {
+        "file": "basic-race-v1.tflite",
+        "modelFileSha256": "760da7ffed9c714697faca29c37fbb00c632b5a02eb0eea9fa55129866f327b8",
+        "modelVersion": 1,
+        "provenance": {
+          "imageManifestSha256": "1c474aadd9797a65f96377280a4d476ef25a76bcf27b701dc897cd7f22c630f8",
+          "modelFileSha256": "760da7ffed9c714697faca29c37fbb00c632b5a02eb0eea9fa55129866f327b8",
+          "runDir": "/Volumes/LaCie/sorghum-model/runs/basic-race-1/run",
+          "splitManifestSha256": "62b79ec59dac20c74a934d2b7e26b4dc04fcf01a520c1357a8badba92970aa52"
+        }
+      },
+      "status": "EXPERIMENTAL. Does not meet the 89% race accuracy goal (ADR-0011, defined over the fifteen races). The gate rule scored 0.965 selective accuracy at 0.793 test coverage, so it misses the 0.80 coverage floor. Kafir, Bicolor and Guinea are mostly unrecognized. This is a hint over five basic races only. It is never a cultivar result and never gates anything.",
+      "temperature": 1.3852983117103579
+    },
+    "species": {
+      "classes": [
+        {
+          "group": "sorghum",
+          "id": "sorghum_bicolor"
+        },
+        {
+          "group": "lookAlike",
+          "id": "johnson_grass"
+        },
+        {
+          "group": "lookAlike",
+          "id": "maize"
+        },
+        {
+          "group": "lookAlike",
+          "id": "sugarcane"
+        },
+        {
+          "group": "lookAlike",
+          "id": "pearl_millet"
+        },
+        {
+          "group": "lookAlike",
+          "id": "finger_millet"
+        },
+        {
+          "group": "otherPlant",
+          "id": "other_grass"
+        },
+        {
+          "group": "otherPlant",
+          "id": "other_plant"
+        },
+        {
+          "group": "noPlant",
+          "id": "no_plant"
+        }
+      ],
+      "evaluation": {
+        "accuracy": 0.8649802890932983,
+        "eceAfterTemperature": 0.012994068475261486,
+        "eceBeforeTemperature": 0.05763208519535215,
+        "eceBins": 15,
+        "float": {
+          "accuracy": 0.8768068331143233,
+          "eceAfterTemperature": 0.010515037796774575,
+          "eceBeforeTemperature": 0.05404192218544766,
+          "eceBins": 15,
+          "perClassAccuracy": {
+            "finger_millet": 0.9516129032258065,
+            "johnson_grass": 0.8087071240105541,
+            "maize": 0.9244532803180915,
+            "no_plant": 0.88,
+            "other_grass": 0.934918648310388,
+            "other_plant": 0.9866666666666667,
+            "pearl_millet": 0.8181818181818182,
+            "sorghum_bicolor": 0.8519924098671727,
+            "sugarcane": 0.8514056224899599
+          },
+          "perClassPrecision": {
+            "finger_millet": 0.6210526315789474,
+            "johnson_grass": 0.7358943577430972,
+            "maize": 0.8072916666666666,
+            "no_plant": 0.7857142857142857,
+            "other_grass": 0.8507972665148064,
+            "other_plant": 1.0,
+            "pearl_millet": 0.9064748201438849,
+            "sorghum_bicolor": 0.9820647419072616,
+            "sugarcane": 0.7881040892193308
+          },
+          "perClassRecall": {
+            "finger_millet": 0.9516129032258065,
+            "johnson_grass": 0.8087071240105541,
+            "maize": 0.9244532803180915,
+            "no_plant": 0.88,
+            "other_grass": 0.934918648310388,
+            "other_plant": 0.9866666666666667,
+            "pearl_millet": 0.8181818181818182,
+            "sorghum_bicolor": 0.8519924098671727,
+            "sugarcane": 0.8514056224899599
+          },
+          "photos": 6088,
+          "sorghumThreshold": 0.2317732870578766,
+          "split": "test",
+          "temperature": 1.6985703110694885,
+          "testSorghumDecisionAccuracy": 0.9402102496714849,
+          "testSorghumPrecision": 0.9522102747909199,
+          "testSorghumRecall": 0.9074003795066413,
+          "validationSorghumDecisionAccuracy": 0.9452121606242887,
+          "validationSorghumPrecision": 0.966605504587156,
+          "validationSorghumRecall": 0.9145833333333333
+        },
+        "perClassAccuracy": {
+          "finger_millet": 0.9516129032258065,
+          "johnson_grass": 0.8258575197889182,
+          "maize": 0.9015904572564613,
+          "no_plant": 0.88,
+          "other_grass": 0.9236545682102628,
+          "other_plant": 0.99,
+          "pearl_millet": 0.8116883116883117,
+          "sorghum_bicolor": 0.8333965844402277,
+          "sugarcane": 0.8353413654618473
+        },
+        "perClassPrecision": {
+          "finger_millet": 0.6145833333333334,
+          "johnson_grass": 0.6917127071823205,
+          "maize": 0.8163816381638164,
+          "no_plant": 0.7189542483660131,
+          "other_grass": 0.8463302752293578,
+          "other_plant": 1.0,
+          "pearl_millet": 0.8992805755395683,
+          "sorghum_bicolor": 0.9803571428571428,
+          "sugarcane": 0.7563636363636363
+        },
+        "perClassRecall": {
+          "finger_millet": 0.9516129032258065,
+          "johnson_grass": 0.8258575197889182,
+          "maize": 0.9015904572564613,
+          "no_plant": 0.88,
+          "other_grass": 0.9236545682102628,
+          "other_plant": 0.99,
+          "pearl_millet": 0.8116883116883117,
+          "sorghum_bicolor": 0.8333965844402277,
+          "sugarcane": 0.8353413654618473
+        },
+        "photos": 6088,
+        "split": "test",
+        "testSorghumDecisionAccuracy": 0.9316688567674113,
+        "testSorghumPrecision": 0.9380181602842479,
+        "testSorghumRecall": 0.901707779886148,
+        "validationSorghumDecisionAccuracy": 0.9411477808486425,
+        "validationSorghumPrecision": 0.9554992764109985,
+        "validationSorghumRecall": 0.9170138888888889
+      },
+      "output": "logits",
+      "outputIndex": 0,
+      "quantizationParity": {
+        "converterTensorflowVersion": "2.17.1",
+        "floatAccuracy": 0.8768068331143233,
+        "int8Accuracy": 0.8649802890932983,
+        "loadsWithXnnpack": true,
+        "maxProbabilityDifference": 0.9486186504364014,
+        "meanProbabilityDifference": 0.00992310419678688,
+        "split": "test",
+        "top1Agreement": 0.959592641261498
+      },
+      "sorghumThreshold": 0.1993158906698227,
+      "temperature": 1.6851409077644353
+    }
+  },
+  "input": {
+    "channelOrder": "RGB",
+    "colorSpace": "sRGB",
+    "dtype": "uint8",
+    "heightPx": 224,
+    "pixelValueRange": [
+      0,
+      255
+    ],
+    "quantization": {
+      "scale": 1.0,
+      "zeroPoint": 0
+    },
+    "resize": "centerSquareCropThenBilinear",
+    "widthPx": 224
+  },
+  "modelFile": "traits-v3.tflite",
+  "modelVersion": 3,
+  "schemaVersion": 1,
+  "shipBar": {
+    "maxQuantizationAccuracyDelta": 0.02,
+    "minSorghumDecisionAccuracy": 0.9,
+    "problems": []
+  },
+  "trainingData": {
+    "imageManifests": {
+      "species-commons.csv": "854044c2308f4a8d170c4f3c95ef1c921bd5b741b3a5c29f6d6dbb7d29487c9c",
+      "species-gbif.csv": "b26e570a16b13264732ab940aceba63ac5a7d9d6eba2748a61a9bb4006c4079c",
+      "species-grainset-maize.csv": "3df75f872a6f82a2653096811a7a9371df9a0307248b127821f8270070dd0cd5",
+      "species-grainset-sorghum.csv": "ab3378e55412af5c740f03049319b8ae59f31ac87a0c61d981a6fe600a840ebf",
+      "species-inaturalist.csv": "ce0ed18904aed454dcd7df4239d582519f53ad505de998d8d3eee60ed4a97e17",
+      "species-sorghum-disease-2024.csv": "83183129495b790cbbf4ff60487594198a4eec3847e9cf81962ca694d5f9ecbf",
+      "species-sorghum-weed-2023.csv": "cb6e12966fae53df1c1422185d15fa1dbe4609165a950e98fe0562f7c8b857ee"
+    },
+    "licenses": [
+      "cc-by",
+      "cc-by-nc",
+      "cc-by-nc-sa",
+      "cc-by-sa",
+      "cc0"
+    ],
+    "merge": "structural (model_bundle.merge_models): outputs bit-identical to each source model",
+    "modelFileSha256": "883d4f9962f68a45da202d5726feba2fd7e38343cce05f72eb3b41f5141c400c",
+    "nonCommercial": true,
+    "photosPerClassAndSplit": {
+      "finger_millet/test": 62,
+      "finger_millet/train": 276,
+      "finger_millet/validation": 68,
+      "johnson_grass/test": 758,
+      "johnson_grass/train": 3932,
+      "johnson_grass/validation": 580,
+      "maize/test": 1006,
+      "maize/train": 5058,
+      "maize/validation": 1041,
+      "no_plant/test": 125,
+      "no_plant/train": 765,
+      "no_plant/validation": 143,
+      "other_grass/test": 799,
+      "other_grass/train": 4444,
+      "other_grass/validation": 750,
+      "other_plant/test": 300,
+      "other_plant/train": 913,
+      "other_plant/validation": 228,
+      "pearl_millet/test": 154,
+      "pearl_millet/train": 866,
+      "pearl_millet/validation": 186,
+      "sorghum_bicolor/test": 2635,
+      "sorghum_bicolor/train": 12302,
+      "sorghum_bicolor/validation": 2880,
+      "sugarcane/test": 249,
+      "sugarcane/train": 1865,
+      "sugarcane/validation": 275
+    },
+    "sourceModels": {
+      "basicRace": {
+        "file": "basic-race-v1.tflite",
+        "modelFileSha256": "760da7ffed9c714697faca29c37fbb00c632b5a02eb0eea9fa55129866f327b8"
+      },
+      "species": {
+        "file": "traits-v2.tflite",
+        "modelFileSha256": "127239c4443b9bfbb47875ba703c698a1bce6da80609f5e387d6845cf8c24d51"
+      }
+    },
+    "splitManifestSha256": "7b920e28ff8c8278b06a4849776a90a1fc7d95013987c9290b73ab265fc2d0bb",
+    "splitSalt": "species-v1"
+  },
+  "traits": []
+}

@@ -10,6 +10,12 @@ const val SUPPORTED_METADATA_SCHEMA_VERSION = 1
 /** Head id of the species head inside `heads` of the metadata. */
 const val SPECIES_HEAD_ID = "species"
 
+/**
+ * Head id of the experimental basic-race head inside `heads` (traits-v3, ADR-0012). Optional:
+ * metadata without it has no race output. Heads with other ids are ignored.
+ */
+const val BASIC_RACE_HEAD_ID = "basicRace"
+
 /** Preprocessing method name agreed with `model/`: centred square crop, then bilinear resize. */
 const val CENTER_SQUARE_CROP_THEN_BILINEAR = "centerSquareCropThenBilinear"
 
@@ -32,8 +38,34 @@ enum class SpeciesGroup {
 data class SpeciesClass(val id: String, val group: SpeciesGroup)
 
 /**
+ * The experimental basic-race head: which output holds its logits and how [readBasicRace] turns
+ * them into an answer. The answer rule was chosen on validation together with the model, so it
+ * is data here, like the sorghum threshold (`model/` `race_evaluation.returned_group`).
+ *
+ * @param races output order of the logits (GRIN basic race names).
+ * @param temperature calibration temperature; probabilities are softmax(logits / T).
+ * @param groupProbabilityMass the answer is the fewest most likely races whose probabilities
+ *   add up to at least this.
+ * @param maxGroupSize a group with more races than this is "unrecognized".
+ * @param isExperimental true while the output has not met its accuracy goal. The output may
+ *   then be shown only as a labelled experimental hint, never as a result or a pass.
+ * @param meetsAccuracyGoal whether the held-out evaluation met the race goal (ADR-0011).
+ *   basic-race-v1 does not.
+ */
+data class BasicRaceHead(
+    val outputIndex: Int,
+    val races: List<String>,
+    val temperature: Double,
+    val groupProbabilityMass: Double,
+    val maxGroupSize: Int,
+    val isExperimental: Boolean,
+    val meetsAccuracyGoal: Boolean,
+)
+
+/**
  * What the app needs from `traits-vN.json`: how to build the input tensor and how to read the
- * species head. Everything the gate decides with comes from here, never from platform code.
+ * species head (and the basic-race head, when present). Everything the gate decides with comes
+ * from here, never from platform code.
  *
  * @param inputScale and [inputZeroPoint] turn a 0–255 pixel value v into the model's uint8
  *   input: q = v / scale + zeroPoint.
@@ -51,6 +83,8 @@ data class ModelMetadata(
     val speciesClasses: List<SpeciesClass>,
     val speciesTemperature: Float,
     val sorghumThreshold: Float,
+    /** Null when the model has no basic-race output (traits-v2 and earlier). */
+    val basicRace: BasicRaceHead? = null,
 )
 
 /** The metadata is missing fields or would make the gate decide wrongly; the model must not be used. */
@@ -89,7 +123,7 @@ private fun MetadataDocument.toModelMetadata(): ModelMetadata {
     if (input.widthPx <= 0 || input.heightPx <= 0) invalid("input size must be positive")
     if (input.quantization.scale <= 0f) invalid("input quantization scale must be positive")
 
-    val species = heads[SPECIES_HEAD_ID] ?: invalid("no $SPECIES_HEAD_ID head")
+    val species = heads.species ?: invalid("no $SPECIES_HEAD_ID head")
     if (species.output != "logits") invalid("species head output must be logits, was ${species.output}")
     if (species.outputIndex < 0) invalid("species outputIndex must not be negative")
     val classes = species.classes.map { SpeciesClass(it.id, speciesGroupOf(it.group) ?: invalid("unknown group ${it.group}")) }
@@ -109,6 +143,34 @@ private fun MetadataDocument.toModelMetadata(): ModelMetadata {
         speciesClasses = classes,
         speciesTemperature = species.temperature,
         sorghumThreshold = species.sorghumThreshold,
+        basicRace = heads.basicRace?.toBasicRaceHead(speciesOutputIndex = species.outputIndex),
+    )
+}
+
+/** The same checks `model/` applies when it writes the head (`metadata._validate_basic_race_head`). */
+private fun BasicRaceHeadDocument.toBasicRaceHead(speciesOutputIndex: Int): BasicRaceHead {
+    fun invalid(reason: String): Nothing = throw InvalidModelMetadataException("$BASIC_RACE_HEAD_ID head: $reason")
+
+    if (output != "logits") invalid("output must be logits, was $output")
+    if (outputIndex < 0) invalid("outputIndex must not be negative")
+    if (outputIndex == speciesOutputIndex) invalid("outputIndex $outputIndex is the species output")
+    if (races.isEmpty() || races.toSet().size != races.size) invalid("races must be unique and not empty")
+    if (temperature <= 0.0) invalid("temperature must be positive")
+    if (answerRule.groupProbabilityMass < 0.5 || answerRule.groupProbabilityMass >= 1.0) {
+        invalid("groupProbabilityMass must be in [0.5, 1), was ${answerRule.groupProbabilityMass}")
+    }
+    if (answerRule.maxGroupSize !in 1..races.size) invalid("maxGroupSize must be within 1..${races.size}")
+    // A missed goal without the experimental mark would let a failed output read as a result.
+    if (!experimental && !meetsAccuracyGoal) invalid("an output that misses its accuracy goal must be experimental")
+
+    return BasicRaceHead(
+        outputIndex = outputIndex,
+        races = races,
+        temperature = temperature,
+        groupProbabilityMass = answerRule.groupProbabilityMass,
+        maxGroupSize = answerRule.maxGroupSize,
+        isExperimental = experimental,
+        meetsAccuracyGoal = meetsAccuracyGoal,
     )
 }
 
@@ -128,7 +190,14 @@ private class MetadataDocument(
     val modelVersion: Int,
     val modelFile: String,
     val input: InputDocument,
-    val heads: Map<String, HeadDocument>,
+    val heads: HeadsDocument,
+)
+
+/** The heads this app reads; unknown head ids are ignored like any unknown key. */
+@Serializable
+private class HeadsDocument(
+    val species: HeadDocument? = null,
+    val basicRace: BasicRaceHeadDocument? = null,
 )
 
 @Serializable
@@ -155,3 +224,18 @@ private class HeadDocument(
 
 @Serializable
 private class ClassDocument(val id: String, val group: String)
+
+// Double, not Float: the rule is compared with summed probabilities exactly as `model/` does.
+@Serializable
+private class BasicRaceHeadDocument(
+    val outputIndex: Int,
+    val output: String,
+    val races: List<String>,
+    val temperature: Double,
+    val answerRule: AnswerRuleDocument,
+    val experimental: Boolean,
+    val meetsAccuracyGoal: Boolean,
+)
+
+@Serializable
+private class AnswerRuleDocument(val groupProbabilityMass: Double, val maxGroupSize: Int)

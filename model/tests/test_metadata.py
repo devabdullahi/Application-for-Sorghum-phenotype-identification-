@@ -4,6 +4,7 @@ import pytest
 
 from sorghum_model.metadata import (
     InputQuantization,
+    basic_race_head,
     build_metadata,
     model_file_names,
     validate_metadata,
@@ -70,3 +71,79 @@ def test_licence_summary_is_additive_under_training_data():
         "outputIndex", "classes", "temperature", "sorghumThreshold"
     }
     assert metadata["trainingData"]["nonCommercial"] is True
+
+
+def _basic_race_head(**overrides):
+    arguments = {
+        "output_index": 1,
+        "races": ["Bicolor", "Caudatum", "Durra", "Guinea", "Kafir"],
+        "temperature": 1.4,
+        "group_probability_mass": 0.89,
+        "max_group_size": 2,
+        "meets_accuracy_goal": False,
+        "status": "EXPERIMENTAL",
+        "evaluation": {},
+        "source_model": {},
+    }
+    arguments.update(overrides)
+    return basic_race_head(**arguments)
+
+
+def test_basic_race_head_is_always_experimental():
+    head = _basic_race_head()
+
+    assert head["experimental"] is True
+    assert head["meetsAccuracyGoal"] is False
+    assert head["answerRule"] == {"groupProbabilityMass": 0.89, "maxGroupSize": 2}
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("temperature", 0.0),
+        ("group_probability_mass", 0.49),
+        ("group_probability_mass", 1.0),
+        ("max_group_size", 0),
+        ("max_group_size", 6),
+        ("races", ["Durra", "Durra"]),
+        ("races", []),
+        ("output_index", -1),
+    ],
+)
+def test_basic_race_head_refuses_invalid_values(field, value):
+    with pytest.raises(ValueError):
+        _basic_race_head(**{field: value})
+
+
+def test_metadata_with_a_basic_race_head_validates():
+    metadata = _metadata()
+    metadata["heads"]["basicRace"] = _basic_race_head()
+    metadata["headOrder"] = ["species", "basicRace"]
+
+    validate_metadata(metadata)
+
+
+def test_refuses_a_basic_race_head_on_the_species_output():
+    metadata = _metadata()
+    metadata["heads"]["basicRace"] = _basic_race_head(output_index=0)
+
+    with pytest.raises(ValueError, match="different outputs"):
+        validate_metadata(metadata)
+
+
+def test_refuses_a_head_order_that_is_not_the_output_order():
+    metadata = _metadata()
+    metadata["heads"]["basicRace"] = _basic_race_head()
+    metadata["headOrder"] = ["basicRace", "species"]
+
+    with pytest.raises(ValueError, match="headOrder"):
+        validate_metadata(metadata)
+
+
+def test_refuses_a_missed_goal_without_the_experimental_mark():
+    metadata = _metadata()
+    metadata["heads"]["basicRace"] = _basic_race_head()
+    metadata["heads"]["basicRace"]["experimental"] = False
+
+    with pytest.raises(ValueError, match="experimental"):
+        validate_metadata(metadata)

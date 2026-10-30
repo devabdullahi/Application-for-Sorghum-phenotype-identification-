@@ -9,6 +9,7 @@ Run `uv run sorghum-model --help` from `model/`. See model/README.md for the ful
 
 import argparse
 import http.client
+import json
 import signal
 import sys
 from collections.abc import Iterable
@@ -32,6 +33,7 @@ from sorghum_model.settings import (
     LabelReviewSettings,
     MfwdEvaluationSettings,
     PublicDatasetSettings,
+    RaceCrosswalkSettings,
     RaceGateSettings,
     RaceRuleSearchSettings,
     RaceTrainingSettings,
@@ -44,6 +46,7 @@ from sorghum_model.settings import (
 )
 from sorghum_model.species_classes import SPECIES_CLASS_NAMES, SPECIES_CLASSES
 from sorghum_model.splits import (
+    Split,
     count_per_class_and_split,
     read_split_manifest,
     split_records,
@@ -61,6 +64,11 @@ DEFAULT_GRIN_DESCRIPTORS = DEFAULT_MANIFEST_DIR / "cultivar-grin-descriptors.csv
 # GRIN pages saved by grin-descriptors; cultivar-split reads the image study pages from here.
 DEFAULT_GRIN_PAGE_CACHE = DEFAULT_CULTIVAR_DATA_ROOT / "grin-descriptor-pages"
 DEFAULT_CULTIVAR_SPLIT = MODEL_DIR / "splits" / "cultivar-grin-v1.csv"
+# Race crosswalk (race_crosswalk.py): GRIN search and detail pages are cached apart from the
+# study pages, and the Frontiers workbook is downloaded next to them.
+DEFAULT_GRIN_ACCESSION_PAGE_CACHE = DEFAULT_CULTIVAR_DATA_ROOT / "grin-accession-pages"
+DEFAULT_FRONTIERS_TABLE = DEFAULT_CULTIVAR_DATA_ROOT / "frontiers-2023" / "tables.xlsx"
+DEFAULT_RACE_CROSSWALK = DEFAULT_MANIFEST_DIR / "race-crosswalk-frontiers.csv"
 # Names the cultivar split scheme; see SplitSettings.salt.
 CULTIVAR_SPLIT_SALT = "cultivar-grin-v1"
 # Same cadence as the species downloaders: losing at most this many rows on a crash is cheap,
@@ -81,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     _add_grin_download(commands)
     _add_cultivar_split(commands)
     _add_grin_descriptors(commands)
+    _add_race_crosswalk(commands)
     _add_review_labels(commands)
     _add_split(commands)
     _add_train(commands)
@@ -89,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     _add_mfwd_report(commands)
     _add_race_train(commands)
     _add_race_export(commands)
+    _add_bundle_heads(commands)
     _add_trait_labels(commands)
     _add_trait_train(commands)
     _add_trait_export(commands)
@@ -671,6 +681,90 @@ def _run_grin_descriptors(arguments) -> None:
         print(line)
 
 
+def _add_race_crosswalk(commands) -> None:
+    command = commands.add_parser(
+        "race-crosswalk",
+        help="Match the Frontiers 2023 race panel to GRIN accessions and report race agreement.",
+    )
+    command.add_argument(
+        "--frontiers-table",
+        type=Path,
+        default=DEFAULT_FRONTIERS_TABLE,
+        help="The article's table workbook; downloaded from figshare when missing.",
+    )
+    command.add_argument(
+        "--page-cache",
+        type=Path,
+        default=DEFAULT_GRIN_PAGE_CACHE,
+        help="GRIN race study pages (from grin-descriptors); fetched only when missing.",
+    )
+    command.add_argument(
+        "--accession-page-cache",
+        type=Path,
+        default=DEFAULT_GRIN_ACCESSION_PAGE_CACHE,
+        help="GRIN search and accession detail pages are kept here, so a rerun fetches nothing.",
+    )
+    command.add_argument("--split", type=Path, default=DEFAULT_CULTIVAR_SPLIT)
+    command.add_argument("--out", type=Path, default=DEFAULT_RACE_CROSSWALK)
+    command.set_defaults(run=_run_race_crosswalk)
+
+
+def _run_race_crosswalk(arguments) -> None:
+    from collections import Counter
+
+    from sorghum_model import grin_descriptors, race_crosswalk
+    from sorghum_model.cultivar_manifest import read_cultivar_split
+    from sorghum_model.cultivar_races import race_labels
+    from sorghum_model.downloads import RequestPacer, download_file, get_text
+    from sorghum_model.frontiers_races import FRONTIERS_TABLE_MD5, FRONTIERS_TABLE_URL, read_frontiers_table
+
+    download_file(FRONTIERS_TABLE_URL, arguments.frontiers_table, expected_md5=FRONTIERS_TABLE_MD5)
+    samples = read_frontiers_table(arguments.frontiers_table)
+    print(f"{len(samples)} Frontiers samples, {sum(bool(s.genebank_number) for s in samples)} with a genebank number")
+
+    settings = RaceCrosswalkSettings()
+    pacer = RequestPacer(settings.seconds_between_requests)
+    fetch_accession_page = grin_descriptors.CachedPageFetcher(
+        arguments.accession_page_cache,
+        lambda url: get_text(url, timeout_seconds=settings.page_timeout_seconds),
+        pacer,
+    )
+    identities = {}
+    for number in sorted({sample.genebank_number for sample in samples}):
+        identities[number] = race_crosswalk.resolve_genebank_number(
+            number, fetch_accession_page, settings.max_candidates_per_search
+        )
+        print(f"  {number or '(sample name)'}: {identities[number].status.value}", flush=True)
+
+    matched = {i.detail.accession for i in identities.values() if i.detail is not None}
+    study_settings = GrinDescriptorSettings()
+    fetch_study_page = grin_descriptors.CachedPageFetcher(
+        arguments.page_cache,
+        lambda url: get_text(url, timeout_seconds=study_settings.study_page_timeout_seconds),
+        pacer,
+    )
+    observations = list(grin_descriptors.fetch_observations(matched, fetch_study_page, [grin_descriptors.RACE]))
+    races = race_labels(matched, observations)
+    race_studies = Counter(accession for accession, _ in {(o.accession, o.study) for o in observations})
+    split_of = {row["cultivar_label"]: row["accession_split"] for row in read_cultivar_split(arguments.split)}
+
+    rows = []
+    for sample in samples:
+        identity = identities[sample.genebank_number]
+        accession = identity.detail.accession if identity.detail else ""
+        rows.append(
+            race_crosswalk.crosswalk_row(
+                sample, identity, races.get(accession), race_studies[accession], split_of.get(accession, "")
+            )
+        )
+    race_crosswalk.write_crosswalk(rows, arguments.out)
+    lines = race_crosswalk.crosswalk_report(rows)
+    summary = arguments.out.with_name(f"{arguments.out.stem}-summary.txt")
+    summary.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print("\n".join(lines))
+    print(f"{len(rows)} rows written to {arguments.out}; summary in {summary}")
+
+
 def _add_cultivar_split(commands) -> None:
     command = commands.add_parser(
         "cultivar-split",
@@ -901,6 +995,71 @@ def _run_race_export(arguments) -> None:
     gate = document["gate"]
     print(f"exported {model_name}-v{arguments.version} to {arguments.out_dir}; gate "
           + ("passed" if gate["passed"] else "missed: " + "; ".join(gate["problems"])))
+
+def _add_bundle_heads(commands) -> None:
+    command = commands.add_parser(
+        "bundle-heads",
+        help="Pack the species export and the basic-race export into one traits-vN model with both "
+        "outputs, metadata and parity fixtures; nothing is retrained (ADR-0012, needs the export extra).",
+    )
+    command.add_argument("--species-export-dir", type=Path, required=True, help="Holds traits-vM.{tflite,json}.")
+    command.add_argument("--species-fixtures-dir", type=Path, required=True, help="The species export's fixtures.")
+    command.add_argument("--basic-race-export-dir", type=Path, required=True, help="Holds basic-race-vK.{tflite,json}.")
+    command.add_argument("--manifest", type=Path, default=DEFAULT_GRIN_MANIFEST)
+    command.add_argument("--splits", type=Path, default=DEFAULT_CULTIVAR_SPLIT)
+    command.add_argument("--data-root", type=Path, default=DEFAULT_CULTIVAR_DATA_ROOT)
+    command.add_argument("--version", type=int, required=True, help="Bundle version N (traits-vN).")
+    command.add_argument("--out-dir", type=Path, required=True)
+    command.add_argument(
+        "--fixtures-root", type=Path, required=True,
+        help="Gets species/ and basic-race/ fixture folders (shared/src/commonTest/resources).",
+    )
+    command.add_argument("--race-fixtures-per-race", type=int, default=2)
+    command.set_defaults(run=_run_bundle_heads)
+
+
+def _run_bundle_heads(arguments) -> None:
+    from sorghum_model.bundle_export import bundle_species_and_basic_race, read_source_export
+    from sorghum_model.cultivar_manifest import read_cultivar_manifest
+    from sorghum_model.race_photos import photos_in, read_race_photos, split_basic_and_intermediate
+
+    species = _single_export(arguments.species_export_dir, "traits-v")
+    basic_race = _single_export(arguments.basic_race_export_dir, "basic-race-v")
+    species_metadata = json.loads(species[1].read_text(encoding="utf-8"))
+    race_metadata = json.loads(basic_race[1].read_text(encoding="utf-8"))
+    photos, _ = split_basic_and_intermediate(read_race_photos(arguments.manifest, arguments.splits))
+    provenance = race_metadata["provenance"]
+    if (provenance["splitManifestSha256"], provenance["imageManifestSha256"]) != (
+        sha256_of_file(arguments.splits), sha256_of_file(arguments.manifest)
+    ):
+        raise ValueError("the basic-race export was made from another split or manifest than --splits and --manifest")
+    validation, test = photos_in(photos, Split.VALIDATION), photos_in(photos, Split.TEST)
+    metadata = bundle_species_and_basic_race(
+        species=read_source_export(*species, species_metadata["trainingData"]["modelFileSha256"]),
+        species_fixtures_dir=arguments.species_fixtures_dir,
+        basic_race=read_source_export(*basic_race, race_metadata["provenance"]["modelFileSha256"]),
+        race_test_photos=test,
+        race_verification_photos=validation + test,
+        image_records={record.image_path: record for record in read_cultivar_manifest(arguments.manifest)},
+        data_root=arguments.data_root,
+        version=arguments.version,
+        out_dir=arguments.out_dir,
+        fixtures_root=arguments.fixtures_root,
+        race_fixture_count_per_race=arguments.race_fixtures_per_race,
+    )
+    print(f"bundled {metadata['modelFile']} with heads {metadata['headOrder']} into {arguments.out_dir}")
+
+
+def _single_export(directory: Path, prefix: str) -> tuple[Path, Path]:
+    """The one `<prefix>N.tflite` and its `.json` in `directory` ("._" files are exFAT metadata)."""
+    models = [p for p in directory.glob(f"{prefix}*.tflite") if not p.name.startswith("._")]
+    if len(models) != 1:
+        raise ValueError(f"expected one {prefix}N.tflite in {directory}, found {len(models)}")
+    metadata = models[0].with_suffix(".json")
+    if not metadata.exists():
+        raise ValueError(f"{metadata} is missing")
+    return models[0], metadata
+
 
 # The catalogue traits a GRIN panicle-and-grain photo shows and GRIN labels (`cultivar_traits`).
 # Seed weight is a candidate for the probe only: the catalogue reads it as a measured trait.
