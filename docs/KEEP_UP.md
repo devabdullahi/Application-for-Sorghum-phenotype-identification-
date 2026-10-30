@@ -151,6 +151,11 @@ Details in `model/README.md`.
 
 Newest first. One line per change that someone on Android should know about.
 
+- **2026-10-30:** Race model race-v1 trained and scored once on test (T9, #32,
+  `feature/race-model-v1`): **89% gate missed**. INT8 selective group-aware race accuracy 0.768
+  at coverage 0.797 (gate 0.89 at >= 0.80), 0.715 at 0.912; +0.275 over the planting baseline
+  (0.493); float/INT8 delta 0.009. New `race-train` and `race-export` commands. Numbers and
+  what would close the gap: `model/README.md`, "Race model results". #32 stays open.
 - **2026-10-30:** Species model iterations 2-3 (`feature/species-model-v2`, ADR-0010). The
   Keras MobileNetV3-Small weights lose ~10 points to INT8 even before fine-tuning, so the
   backbone is now MobileNetV2 1.0 (2.7 MB INT8), converted with TF 2.17 to match

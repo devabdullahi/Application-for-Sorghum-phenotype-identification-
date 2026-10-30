@@ -20,7 +20,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from sorghum_model.settings import RaceEvaluationSettings
+from sorghum_model.settings import RaceEvaluationSettings, RaceGateSettings, RaceRuleSearchSettings
 
 UNRECOGNIZED = "unrecognized"
 
@@ -156,3 +156,215 @@ def race_evaluation_report(evaluation: RaceEvaluation, races: Sequence[str]) -> 
         lines.append(f"{race:18} {counts}")
     lines.append("columns: " + ", ".join(f"{index} {column}" for index, column in enumerate(columns)))
     return lines
+
+
+@dataclass(frozen=True)
+class ChosenRule:
+    """An answer rule picked on validation, with the validation numbers that picked it."""
+
+    settings: RaceEvaluationSettings
+    validation: RaceEvaluation
+
+
+def choose_answer_rule(
+    true_races: Sequence[str],
+    accessions: Sequence[str],
+    probabilities: np.ndarray,
+    races: Sequence[str],
+    target_coverage: float,
+    search: RaceRuleSearchSettings,
+) -> ChosenRule:
+    """The rule with the best validation selective accuracy whose validation coverage reaches
+    `target_coverage + search.coverage_margin`. Ties go to the smaller mean group, then the
+    lower mass. Call it with validation data only; test is scored once, with the result.
+
+    Raises ValueError when no rule in the search grid reaches the coverage.
+    """
+    required_coverage = target_coverage + search.coverage_margin
+    best: ChosenRule | None = None
+    for max_group_size in search.max_group_sizes:
+        for mass in search.group_masses():
+            settings = RaceEvaluationSettings(group_probability_mass=mass, max_group_size=max_group_size)
+            evaluation = evaluate_races(true_races, accessions, probabilities, races, settings)
+            if evaluation.coverage < required_coverage:
+                continue
+            if best is None or _is_better(evaluation, best.validation):
+                best = ChosenRule(settings, evaluation)
+    if best is None:
+        raise ValueError(f"no answer rule reaches validation coverage {required_coverage:.3f}")
+    return best
+
+
+def _is_better(candidate: RaceEvaluation, incumbent: RaceEvaluation) -> bool:
+    if candidate.selective_accuracy != incumbent.selective_accuracy:
+        return candidate.selective_accuracy > incumbent.selective_accuracy
+    return candidate.mean_group_size < incumbent.mean_group_size
+
+
+def top1_accuracy(true_races: Sequence[str], probabilities: np.ndarray, races: Sequence[str]) -> float:
+    """Share of photos whose most probable race is the true race (no groups, no abstention)."""
+    predicted = [races[index] for index in probabilities.argmax(axis=1)]
+    return float(np.mean([p == t for p, t in zip(predicted, true_races, strict=True)]))
+
+
+def majority_race_probabilities(train_races: Sequence[str], races: Sequence[str], photo_count: int) -> np.ndarray:
+    """The majority baseline: every photo gets the most common training race with certainty.
+
+    Scored with `evaluate_races`, it answers every photo with a group of one.
+    """
+    return _one_hot([Counter(train_races).most_common(1)[0][0]] * photo_count, races)
+
+
+def planting_race_probabilities(
+    train_races: Sequence[str],
+    train_plantings: Sequence[str],
+    plantings: Sequence[str],
+    races: Sequence[str],
+) -> np.ndarray:
+    """The planting baseline: each photo gets the most common training race of its planting.
+
+    Plantings differ in board, light and year, and their race mixes differ, so a model can
+    score well by recognising the planting alone; it must beat this clearly. A planting with
+    no training photos gets the overall majority race.
+    """
+    overall = Counter(train_races).most_common(1)[0][0]
+    by_planting: dict[str, Counter[str]] = {}
+    for race, planting in zip(train_races, train_plantings, strict=True):
+        by_planting.setdefault(planting, Counter())[race] += 1
+    predicted = [
+        by_planting[planting].most_common(1)[0][0] if planting in by_planting else overall for planting in plantings
+    ]
+    return _one_hot(predicted, races)
+
+
+def _one_hot(predicted: Sequence[str], races: Sequence[str]) -> np.ndarray:
+    probabilities = np.zeros((len(predicted), len(races)))
+    for row, race in enumerate(predicted):
+        probabilities[row, list(races).index(race)] = 1.0
+    return probabilities
+
+
+def race_gate_problems(
+    int8_test: RaceEvaluation,
+    float_test: RaceEvaluation,
+    best_baseline_accuracy: float,
+    gate: RaceGateSettings,
+) -> list[str]:
+    """Every way the INT8 model's test result misses the T9 gate; empty when it passes.
+
+    `float_test` is the float model scored with the same rule; `best_baseline_accuracy` the
+    better of the majority and planting baselines (they answer every photo, so their
+    selective accuracy is their accuracy).
+    """
+    problems = []
+    if int8_test.selective_accuracy < gate.min_selective_accuracy:
+        problems.append(
+            f"selective accuracy {int8_test.selective_accuracy:.3f} < {gate.min_selective_accuracy:.2f}"
+        )
+    if int8_test.coverage < gate.min_coverage:
+        problems.append(f"coverage {int8_test.coverage:.3f} < {gate.min_coverage:.2f}")
+    margin = int8_test.selective_accuracy - best_baseline_accuracy
+    # Differences of float ratios fall short of exact values (0.9 - 0.8 < 0.1).
+    if margin < gate.min_points_over_baseline - _PROBABILITY_SUM_TOLERANCE:
+        problems.append(f"only {margin:.3f} above the best baseline ({best_baseline_accuracy:.3f})")
+    delta = abs(float_test.selective_accuracy - int8_test.selective_accuracy)
+    if delta > gate.max_int8_accuracy_delta + _PROBABILITY_SUM_TOLERANCE:
+        problems.append(f"float/INT8 selective accuracy delta {delta:.3f} > {gate.max_int8_accuracy_delta:.2f}")
+    return problems
+
+
+# Harlan & de Wet's five basic races. Every intermediate is named "<basic>-<basic>"
+# (GRIN: "Durra-bicolor"), so its two parents can be read from its name.
+BASIC_RACES: tuple[str, ...] = ("Bicolor", "Caudatum", "Durra", "Guinea", "Kafir")
+
+
+def parent_basic_races(race: str) -> frozenset[str]:
+    """The basic races a race is made of: itself for a basic race, both parents for an
+    intermediate ("Durra-bicolor" -> {Durra, Bicolor})."""
+    parents = frozenset(part.capitalize() for part in race.split("-"))
+    if not parents <= set(BASIC_RACES):
+        raise ValueError(f"{race!r} is not a basic race or an intermediate of two")
+    return parents
+
+
+@dataclass(frozen=True)
+class BasicRaceEvaluation:
+    """SECONDARY metric, never the gate: the 15-race answer read at the level of the five
+    basic races.
+
+    The returned group (same rule as the gate) is mapped to the basic races of its members;
+    a photo is a hit when one of its true race's parents is among them. Lenient by design:
+    a Durra-bicolor photo answered "Durra" is a hit. Abstentions stay abstentions.
+    """
+
+    photo_count: int
+    answered_count: int
+    hit_count: int
+
+    @property
+    def coverage(self) -> float:
+        return self.answered_count / self.photo_count if self.photo_count else 0.0
+
+    @property
+    def selective_accuracy(self) -> float:
+        return self.hit_count / self.answered_count if self.answered_count else 0.0
+
+
+def evaluate_basic_races(
+    true_races: Sequence[str], probabilities: np.ndarray, races: Sequence[str], settings: RaceEvaluationSettings
+) -> BasicRaceEvaluation:
+    answered = hits = 0
+    for true_race, row in zip(true_races, probabilities, strict=True):
+        group = returned_group(row, races, settings)
+        if group is None:
+            continue
+        answered += 1
+        group_parents = frozenset().union(*(parent_basic_races(race) for race in group))
+        if parent_basic_races(true_race) & group_parents:
+            hits += 1
+    return BasicRaceEvaluation(len(true_races), answered, hits)
+
+
+@dataclass(frozen=True)
+class PlantingCheck:
+    """The model against the planting baseline inside one planting.
+
+    Within a planting the board, light and season are shared, so the planting baseline
+    there is simply that planting's commonest training race; whatever the model gains over
+    it inside the planting cannot come from recognising the planting.
+    """
+
+    planting_id: str
+    photo_count: int
+    coverage: float
+    selective_accuracy: float
+    planting_baseline_accuracy: float
+
+    @property
+    def gain_over_baseline(self) -> float:
+        return self.selective_accuracy - self.planting_baseline_accuracy
+
+
+def planting_shortcut_check(
+    true_races: Sequence[str],
+    accessions: Sequence[str],
+    plantings: Sequence[str],
+    probabilities: np.ndarray,
+    races: Sequence[str],
+    settings: RaceEvaluationSettings,
+    train_races: Sequence[str],
+    train_plantings: Sequence[str],
+) -> list[PlantingCheck]:
+    """One `PlantingCheck` per planting of the scored photos, by planting id."""
+    baseline = planting_race_probabilities(train_races, train_plantings, plantings, races)
+    checks = []
+    for planting in sorted(set(plantings)):
+        rows = [index for index, value in enumerate(plantings) if value == planting]
+        subset_truth = [true_races[index] for index in rows]
+        subset_accessions = [accessions[index] for index in rows]
+        model = evaluate_races(subset_truth, subset_accessions, probabilities[rows], races, settings)
+        planting_only = evaluate_races(subset_truth, subset_accessions, baseline[rows], races, settings)
+        checks.append(
+            PlantingCheck(planting, len(rows), model.coverage, model.selective_accuracy, planting_only.accuracy)
+        )
+    return checks

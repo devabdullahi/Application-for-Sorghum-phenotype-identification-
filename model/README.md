@@ -229,8 +229,7 @@ image cell shows the first image, so only the first image of those accessions is
 
 ### Race model plan (T4, #24)
 
-Not trained yet: training waits for the shared MobileNetV2 backbone
-(`feature/species-model-v2`, ADR-0010) and for the CPU slot.
+Trained and scored once on test as race-v1 (T9, #32); results below. The plan as followed:
 
 1. **Data.** Photos with a `race` in `splits/cultivar-grin-v1.csv`, split by
    `accession_split` (never by image; no accession or file crosses splits). Excluded labels
@@ -253,6 +252,63 @@ Not trained yet: training waits for the shared MobileNetV2 backbone
    and the confusion matrix (top-1 race, plus an "unrecognized" column). The 89% target is
    claimed only for group-aware accuracy at the reported coverage (ADR-0011); otherwise the
    measured result and its limits are published.
+
+### Race model results (race-v1, T9 #32, 2026-10-30)
+
+**The 89% gate was missed.** On the untouched test split (1,029 photos, 15 races) the INT8 model
+answers 79.7% of photos with selective group-aware accuracy **0.768** (gate: 0.89 at >= 80%
+coverage). Every threshold was chosen on validation only; test was scored once.
+
+```sh
+# train extra (TF 2.20), about 21 min on the 16 GB Mac (CPU): 50 s per frozen epoch, 75 s per fine-tune epoch
+python -m sorghum_model.cli race-train --data-root <data>/cultivar \
+  --starting-model <runs>/v2-3/run/species.keras --run-dir <runs>/race-v1/run
+# export extra (TF 2.17): INT8, temperatures and answer rules on validation, one test scoring
+python -m sorghum_model.cli race-export --data-root <data>/cultivar \
+  --run-dir <runs>/race-v1/run --version 1 --out-dir <runs>/race-v1/export
+```
+
+- **Model:** traits-v2 MobileNetV2 1.0 backbone (run v2-3) with a new 15-race head, same uint8
+  224 px centre-crop input. 10 head epochs on the frozen backbone, then 10 fine-tune epochs from
+  `block_12_expand` with BatchNorm frozen (`RaceTrainingSettings`). Unweighted loss, best
+  validation loss at the last epoch (1.537). Exported with the TF 2.17 converter.
+- **Answer rules** (`race_evaluation.choose_answer_rule`, on INT8 validation outputs, target
+  coverage + 0.02): 80% point mass 0.62, max group 3; 90% point mass 0.54, max group 3.
+
+| Test (1,029 photos) | coverage | selective acc. | acc. over all photos | mean group | top-1 |
+|---|---|---|---|---|---|
+| INT8, 80% rule | 0.797 | **0.768** | 0.612 | 1.78 | 0.558 |
+| float, same rule | 0.789 | 0.777 | 0.613 | 1.80 | 0.535 |
+| INT8, 90% rule | 0.912 | 0.715 | 0.652 | 1.70 | |
+| majority baseline (Caudatum) | 1.000 | 0.359 | 0.359 | 1.00 | 0.359 |
+| planting baseline | 1.000 | 0.493 | 0.493 | 1.00 | 0.493 |
+
+Gate: selective accuracy 0.768 < 0.89 and coverage 0.797 < 0.80 (validation coverage 0.829).
+Passed: +0.275 over the better baseline (bar 0.10) and float/INT8 delta 0.009 (bar 0.02).
+Temperature 1.33 (INT8); test ECE 0.093 before, 0.050 after. Per-race recall, support and the
+confusion matrix are in `race-v1-report.txt` next to the model; in short, Caudatum (0.84) and
+Durra (0.81) are found, and most intermediates are not (Kafir-caudatum 0.18, Caudatum-bicolor
+0.09, Kafir-bicolor 0 of 7): they are answered as their dominant parent (Kafir-durra as Durra
+31 of 57, Kafir-caudatum as Caudatum 30 of 57).
+
+- **Secondary, not the gate:** read at the five basic races (a hit when a parent of the true
+  race is among the parents of the returned group, `evaluate_basic_races`), the same answers
+  score 0.978 at 0.797 coverage. Lenient by construction.
+- **Planting shortcut:** inside every planting with more than 12 test photos the model beats
+  that planting's commonest training race by +0.15 (Sudan 1993) to +0.73 (SP42 2006), so it
+  is not only recognising the board. But a leave-one-planting-out check on train+validation
+  (frozen features, linear head) shows race signal transfers to an unseen planting only
+  partly: held-out top-1 0.58 (Sudan) to 0.16 (Isabela 2010).
+- **What was tried on validation** (selective accuracy near 82% coverage): frozen-feature
+  linear head 0.735 balanced, 0.773 unweighted; ImageNet backbone 0.749; MLP heads no better;
+  fine-tuning at 1e-4 with balanced weights overfitted from its first epoch (0.658); letterbox
+  instead of centre crop 0.771; 448 px input 0.777-0.795. None comes within 9 points of 0.89.
+- **Why, and what would close the gap:** the intermediates are defined by spikelet and glume
+  detail that a whole-board 224 px photo barely resolves, have 7-74 test photos each, and are
+  scored against single GRIN labels whose own agreement is unknown. Closer data would be grain
+  and spikelet close-ups per accession (the app's own grain photo), several plantings per
+  accession, and many more photos of the ten intermediates; a measured inter-rater agreement on
+  GRIN race labels would show the ceiling.
 
 ## Setup
 
