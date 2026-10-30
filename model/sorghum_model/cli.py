@@ -88,6 +88,7 @@ def main(argv: list[str] | None = None) -> int:
     _add_trait_labels(commands)
     _add_trait_train(commands)
     _add_trait_export(commands)
+    _add_trait_ranking(commands)
     arguments = parser.parse_args(argv)
     signal.signal(signal.SIGTERM, exit_on_terminate)
     try:
@@ -888,6 +889,8 @@ def _run_race_export(arguments) -> None:
 # The catalogue traits a GRIN panicle-and-grain photo shows and GRIN labels (`cultivar_traits`).
 # Seed weight is a candidate for the probe only: the catalogue reads it as a measured trait.
 DEFAULT_HEAD_TRAITS = ("glumeColour", "grainColour", "panicleCompactnessAndShape")
+# Must equal shared TraitNoiseSettings.minStateProbability (TraitEstimate.kt); copied by hand.
+APP_TRAIT_NOISE_FLOOR = 0.01
 
 
 def _add_trait_photo_arguments(command) -> None:
@@ -992,6 +995,35 @@ def _run_trait_export(arguments) -> None:
     )
     print(f"exported trait-heads-v{arguments.version} to {arguments.out_dir}; heads passing R6: "
           + (", ".join(document["passedHeads"]) or "none"))
+
+
+def _add_trait_ranking(commands) -> None:
+    command = commands.add_parser(
+        "trait-ranking",
+        help="Offline trait-first check: trait-head outputs through naive Bayes to race and accession rankings.",
+    )
+    _add_trait_photo_arguments(command)
+    command.add_argument("--traits", nargs="+", default=list(DEFAULT_HEAD_TRAITS))
+    command.add_argument("--outputs", type=Path, required=True, help="trait-heads-vN-outputs.npz from trait-export.")
+    command.add_argument("--out", type=Path, required=True, help="JSON file for the results.")
+    command.set_defaults(run=_run_trait_ranking)
+
+
+def _run_trait_ranking(arguments) -> None:
+    import json
+
+    import numpy as np
+
+    from sorghum_model.race_export import GATE_COVERAGE
+    from sorghum_model.trait_ranking import ranking_check
+
+    photos, heads = _trait_photos_and_heads(arguments)
+    with np.load(arguments.outputs) as saved:
+        outputs = {key: saved[key] for key in saved.files}
+    # The app's floor (shared TraitNoiseSettings.minStateProbability), so the check reasons as the app does.
+    result = ranking_check(photos, heads, outputs, APP_TRAIT_NOISE_FLOOR, GATE_COVERAGE, RaceRuleSearchSettings())
+    arguments.out.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(result, indent=2))
 
 
 def _manifest_paths(manifests: list[Path] | None) -> list[Path]:

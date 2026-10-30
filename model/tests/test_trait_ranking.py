@@ -82,3 +82,30 @@ def test_tied_classes_share_the_top_k_chance():
     assert tie_aware_top_k(scores, true_columns, 1) == pytest.approx((1 / 3 + 0) / 2)
     assert tie_aware_top_k(scores, true_columns, 2) == pytest.approx((2 / 3 + 1 / 3) / 2)
     assert tie_aware_top_k(scores, true_columns, 3) == pytest.approx((1 + 2 / 3) / 2)
+
+
+def test_ranking_check_finds_races_a_trait_separates():
+    from sorghum_model.settings import RaceRuleSearchSettings
+    from sorghum_model.trait_ranking import ranking_check
+
+    def labelled(index: int, split: Split) -> TraitPhoto:
+        race, state = (("Durra", "1"), ("Kafir", "4"))[index % 2]
+        states = {"glumeColour": state, "hundredSeedWeight": "5"}
+        return TraitPhoto(f"{split.value}{index}.jpg", f"{split.value}{index}", f"{split.value}-A{index}", "P", split, race, states)
+
+    photos = [labelled(i, split) for split in Split for i in range(20)]
+    outputs = {}
+    for split in (Split.VALIDATION, Split.TEST):
+        in_split = [p for p in photos if p.split is split]
+        outputs[f"sha256/{split.value}"] = np.array([p.sha256 for p in in_split])
+        # The head reads glume colour right with 0.9 confidence.
+        outputs[f"glumeColour/{split.value}"] = np.array(
+            [[0.9, 0.1] if p.states["glumeColour"] == "1" else [0.1, 0.9] for p in in_split]
+        )
+    result = ranking_check(photos, {"glumeColour": ("1", "4")}, outputs, 0.01, 0.8, RaceRuleSearchSettings())
+    for variant in ("heads", "oracle", "oracleWithSeedWeight"):
+        assert result["variants"][variant]["testTop1"] == pytest.approx(1.0)
+        assert result["variants"][variant]["test"]["selectiveAccuracy"] == pytest.approx(1.0)
+    # Each accession shares its glume colour with the 29 other accessions of its race over
+    # train, validation and test (all in the table), so exact matching is a 1-in-30 guess.
+    assert result["variants"]["oracle"]["accessionMatching"]["top1"] == pytest.approx(1 / 30)

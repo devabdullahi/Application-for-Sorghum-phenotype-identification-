@@ -53,7 +53,10 @@ def export_trait_model(
 ) -> dict:
     """Writes the INT8 model, its evaluation, report and outputs; returns the evaluation document."""
     labelled = [p for p in photos if any(p.states.get(t) in states for t, states in head_states.items())]
-    train, validation, test = ([p for p in labelled if p.split is split] for split in Split)
+    train = [p for p in labelled if p.split is Split.TRAIN]
+    # Every validation and test photo is run, labelled or not, so the saved outputs also serve
+    # the race ranking check; each head is scored only on photos with one of its states.
+    validation, test = ([p for p in photos if p.split is split] for split in (Split.VALIDATION, Split.TEST))
     float_model = keras.models.load_model(run_dir / TRAIT_MODEL_FILE)
     representative = [train[i] for i in np.random.default_rng(SHUFFLE_SEED).permutation(len(train))]
     model_bytes = convert_to_int8(
