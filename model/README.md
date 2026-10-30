@@ -316,6 +316,122 @@ Durra (0.81) are found, and most intermediates are not (Kafir-caudatum 0.18, Cau
   accession, and many more photos of the ten intermediates; a measured inter-rater agreement on
   GRIN race labels would show the ceiling.
 
+## Trait heads (T12, #35, 2026-10-30)
+
+Learned trait heads trained from GRIN descriptors on the GRIN photos, scored once on the
+untouched `accession_split` test split. **No head passes the R6 gate**, so none is ready to
+ship; the model is a research artifact (not bundled, `traits-vN` contract unchanged).
+
+### Labels (`cultivar_traits.py`, `sorghum-model trait-labels`)
+
+An accession gets a state for a trait only when every GRIN observation of it maps to the same
+IBPGR state (`grin_descriptors.py` mappings). Otherwise it has no label for that trait (its
+photos still serve the other traits), with the reason recorded:
+
+| Exclusion | Meaning | Glume | Grain | Panicle |
+|---|---|---|---|---|
+| `no-observation` | GRIN has no value | 3,868 | 2,537 | 3,576 |
+| `no-single-state` | only values without one IBPGR state (Tan, Mixed, Segregating; loose or semi-loose panicles, whose IBPGR state needs the branch habit GRIN does not record) | 973 | 938 | 2,188 |
+| `conflicting-observations` | plantings name different states, or a state and a value without one | 51 | 79 | 37 |
+| `unmapped-value` | a value missing from GRIN's code table | 0 | 0 | 0 |
+
+Panicle uses each study's combined compactness + shape row; a study with only one of the two
+counts as a value without a state. A head outputs the catalogue states with at least 20
+training accessions (`TraitLabelSettings`); rarer states (grain 6 "Other", panicle 12 "Broom
+corn") get no output and `shared/` would give them the floor. Coverage and per-state support
+per split: `splits/cultivar-grin-v1-trait-summary.txt`. Not candidates: grain lustre (GRIN has
+no lustre descriptor), midrib colour and plant pigmentation (leaf traits the panicle-and-grain
+photos do not show). 100-seed weight is labelled for the probe only (a measured trait in the
+catalogue).
+
+Limits: the loose and semi-loose elliptical panicles (1,163 accessions) are absent from
+training and scoring, so the panicle head has never seen them; GRIN boards have no colour card,
+so colour is uncalibrated camera colour.
+
+### Frozen-feature probe (validation only)
+
+Linear heads on the cached traits-v2 backbone embedding (1280-d, flip-augmented), L2 chosen
+by validation loss, ECE after a 2-fold temperature on validation accessions:
+
+| Trait | Val photos | Accuracy | Macro recall | ECE | Majority | Planting |
+|---|---|---|---|---|---|---|
+| glumeColour | 652 | 0.584 | 0.290 | 0.028 | 0.485 | 0.560 |
+| grainColour | 857 | 0.671 | 0.463 | 0.034 | 0.462 | 0.457 |
+| panicleCompactnessAndShape | 515 | 0.676 | 0.565 | 0.038 | 0.456 | 0.546 |
+| hundredSeedWeight (probe only) | 1,443 | 0.622 | 0.518 | 0.033 | 0.488 | 0.564 |
+
+Hand-built colour features (linear-sRGB statistics of the sample pixels found by a Python port
+of `shared/segmentation` ContrastMask, raw and divided by the board colour) did not help
+glume colour (0.584) and helped grain colour a little (0.690 with the embedding; 0.645 alone).
+Grain colour from colour statistics alone is close to the CNN, so it may belong as a
+*measured* reader on colour-card-corrected grain photos (a T17 candidate).
+
+### Model and test result (trait-heads-v1)
+
+```sh
+# train extra (TF 2.20): 15 frozen-head epochs, then fine-tuning from block_12_expand at 3e-5
+python -m sorghum_model.cli trait-train --data-root <data>/cultivar \
+  --starting-model <runs>/v2-3/run/species.keras --run-dir <runs>/trait-heads-1/run --fine-tune-epochs 20
+# export extra (TF 2.17): INT8, one temperature per head on INT8 validation, one test scoring
+python -m sorghum_model.cli trait-export --data-root <data>/cultivar \
+  --run-dir <runs>/trait-heads-1/run --version 1 --out-dir <runs>/trait-heads-1/export
+python -m sorghum_model.cli trait-ranking --outputs <runs>/trait-heads-1/export/trait-heads-v1-outputs.npz \
+  --out <runs>/trait-heads-1/export/trait-heads-v1-ranking.json
+```
+
+One model, three softmax heads on the traits-v2 MobileNetV2 backbone (`trait_training.py`); a
+photo trains every head its accession has a state for, with loss weight 0 on the others. The
+run was first 15 + 10 epochs, then resumed to 15 + 20 because validation loss was still
+falling; the checkpoint with the best total validation loss (epoch 29, 1.887) was exported.
+Fine-tuning beat the frozen heads on validation for grain colour only (0.702 against 0.671);
+glume and panicle were level. The heads are found in the TFLite file by matching each to the
+output whose top-1 agrees with the float head (`match_heads_to_outputs`); the JSON records
+each head's `outputIndex`.
+
+Test, INT8 with its validation temperature (gate: `TraitGateSettings`, set before any head was
+scored: accuracy >= 0.70, >= 0.10 over the better of the majority and planting baselines,
+macro recall >= 0.50, ECE <= 0.05, |float - INT8| <= 0.02):
+
+| Head (states) | Test photos | Accuracy | Macro recall | ECE before / after T | Float | Majority | Planting | Gate |
+|---|---|---|---|---|---|---|---|---|
+| glumeColour (1-6) | 658 | 0.588 | 0.352 | 0.096 / 0.040 | 0.590 | 0.460 | 0.562 | missed: accuracy, margin 0.026, macro recall |
+| grainColour (1-5) | 850 | 0.668 | 0.464 | 0.081 / 0.038 | 0.692 | 0.451 | 0.491 | missed: accuracy, macro recall, INT8 delta 0.024 |
+| panicleCompactnessAndShape (1, 8, 9, 10) | 509 | 0.676 | 0.537 | 0.137 / 0.057 | 0.680 | 0.487 | 0.587 | missed: accuracy, margin 0.088, ECE |
+
+Per-state recall, support and confusion are in `trait-heads-v1-report.txt`. In short: glume
+Purple and Black are read (0.70, 0.71), Sienna, Mahogany and Red are not (0, 0.14, 0.17);
+grain White 0.84, Brown 0.69, Red 0.53, Yellow 0.27, Buff 0; panicle semi-compact elliptic 0.90
+and lax 0.71, compact oval 0.53, compact elliptic 0.01 (answered as semi-compact elliptic).
+The looser criterion in `docs/architecture/model-status.md` (+0.10 over majority, INT8 within
+0.02) would pass glume and panicle; the R6 gate above is the one that decides.
+
+### Trait-first ranking check (`trait_ranking.py`)
+
+The heads' test outputs through naive Bayes as `shared/reasoning` computes it (soft evidence
+sum_s P(s | class) r(s), the 0.01 floor on readings and rows). Race tables and prior from
+training accessions; the race answer rule chosen on validation for 80% coverage; 1,032 test
+photos with a scored race. "Oracle" reads the accession's own GRIN states instead of the
+heads: the ceiling of a perfect reader of the same traits.
+
+| Readings | Race top-1 | Top-3 | Coverage | Selective acc. | Mean group | Accession top-1 / top-10 / top-100 (8,956 candidates) |
+|---|---|---|---|---|---|---|
+| heads (3 traits) | 0.456 | 0.678 | 0.836 | 0.665 | 2.38 | 0.001 / 0.011 / 0.075 |
+| GRIN oracle, same traits | 0.441 | 0.681 | 0.934 | 0.641 | 2.26 | 0.013 / 0.100 / 0.338 |
+| GRIN oracle + 100-seed weight | 0.450 | 0.731 | 0.837 | 0.685 | 2.09 | 0.032 / 0.172 / 0.478 |
+| race-v1 (direct race head) | 0.558 | | 0.797 | 0.768 | 1.78 | |
+
+Even perfect readings of these traits leave race identification well below the direct race
+model, and exact-accession matching is not usable (accessions share trait profiles; risk R1).
+Accession matching uses every labelled GRIN accession as the table, the test accession
+included, as a genebank table would hold it; no image of a test accession was trained on.
+
+### What would close the gap
+
+Glume colour and compact-elliptic panicles are small details in a whole-board 224 px photo;
+crops of the panicle and of the grain (the app's own photo types) and a colour card would help
+more than more epochs. A second GRIN reading per accession would also measure label agreement,
+the ceiling these heads are scored against.
+
 ## Setup
 
 Needs [uv](https://docs.astral.sh/uv/). TensorFlow needs Python 3.11 or 3.12.
@@ -405,6 +521,10 @@ uv run --extra export sorghum-model export --run-dir runs/species-v1 --version 1
 | `export.py` | INT8 conversion, float-vs-INT8 parity, temperature, threshold, fixtures |
 | `calibration.py` | Temperature fit, ECE, sorghum threshold choice |
 | `metadata.py` | Builds and validates `traits-vN.json` |
+| `cultivar_traits.py` | Per-accession trait labels from GRIN descriptors, exclusions, head states |
+| `trait_training.py`, `trait_export.py` | Multi-head trait model training, INT8 export, per-head temperature and R6 gate |
+| `trait_evaluation.py` | Trait head scores, baselines, the R6 gate, TFLite output matching |
+| `trait_ranking.py` | Offline naive Bayes over trait readings (race and accession ranking) |
 
 ### Contract with `shared/`
 

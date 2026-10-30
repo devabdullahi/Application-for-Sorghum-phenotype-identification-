@@ -1014,7 +1014,7 @@ def _run_trait_ranking(arguments) -> None:
 
     import numpy as np
 
-    from sorghum_model.race_export import GATE_COVERAGE
+    from sorghum_model.race_evaluation import GATE_COVERAGE
     from sorghum_model.trait_ranking import ranking_check
 
     photos, heads = _trait_photos_and_heads(arguments)

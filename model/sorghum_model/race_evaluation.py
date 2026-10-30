@@ -24,6 +24,10 @@ from sorghum_model.settings import RaceEvaluationSettings, RaceGateSettings, Rac
 
 UNRECOGNIZED = "unrecognized"
 
+# The coverage the race gate is judged at (`RaceGateSettings.min_coverage`, #32); answer rules
+# are chosen on validation for it.
+GATE_COVERAGE = 0.80
+
 # Float sums of probabilities fall short of exact values (0.3 + 0.3 + 0.3 < 0.9), which would
 # grow a group by a race it does not need.
 _PROBABILITY_SUM_TOLERANCE = 1e-9
