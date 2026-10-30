@@ -727,6 +727,10 @@ def _add_train(commands) -> None:
     command.add_argument("--splits", type=Path, default=DEFAULT_SPLIT_MANIFEST)
     command.add_argument("--data-root", type=Path, default=DEFAULT_DATA_ROOT)
     command.add_argument("--run-dir", type=Path, required=True)
+    command.add_argument(
+        "--resume", action="store_true",
+        help="Continue the run in --run-dir after its last finished epoch (same data and settings).",
+    )
     command.set_defaults(run=_run_train)
 
 
@@ -734,7 +738,10 @@ def _run_train(arguments) -> None:
     from sorghum_model.train import train_species_model
 
     records, splits = _load_records_and_splits(arguments.manifests, arguments.splits)
-    train_species_model(records, splits, arguments.data_root, arguments.run_dir, TrainingSettings())
+    train_species_model(
+        records, splits, arguments.data_root, arguments.run_dir, TrainingSettings(),
+        resume=arguments.resume,
+    )
     print(f"trained model in {arguments.run_dir}")
 
 

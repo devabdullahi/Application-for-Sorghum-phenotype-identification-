@@ -26,6 +26,7 @@ def _metadata(**overrides):
         "training_data": {},
         "ship_bar": {"problems": []},
         "below_bar": False,
+        "backbone": "MobileNetV3-Small minimalistic",
     }
     arguments.update(overrides)
     return build_metadata(**arguments)

@@ -14,6 +14,15 @@ dependencies = [
 # metadata run (and are tested) without it.
 train = [
     "tensorflow>=2.18,<2.21",
+    "keras==3.15.1",
+]
+# `export` converts with the TensorFlow Lite release the iPhone runs (TensorFlowLiteSwift
+# 2.17.0; ExportSettings.converter_tensorflow_version), because a TF 2.20 conversion failed
+# the iOS parity test. Keras is pinned to the same release as `train`, so the `.keras`
+# checkpoint loads identically in both environments. TF 2.17 needs numpy < 2.
+export = [
+    "tensorflow>=2.17,<2.18",
+    "keras==3.15.1",
 ]
 # Only `review-labels` needs PyTorch and open_clip (BioCLIP 2 zero-shot). Kept apart from
 # `train` so the TensorFlow environment does not also carry PyTorch.
@@ -24,6 +33,10 @@ review = [
 
 [project.scripts]
 sorghum-model = "sorghum_model.cli:main"
+
+[tool.uv]
+# One environment per extra: training and export need different TensorFlow releases.
+conflicts = [[{ extra = "train" }, { extra = "export" }]]
 
 [dependency-groups]
 dev = ["pytest>=8"]

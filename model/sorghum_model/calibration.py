@@ -74,26 +74,29 @@ def expected_calibration_error(probabilities: np.ndarray, labels: np.ndarray, bi
 
 @dataclass(frozen=True)
 class SorghumThreshold:
-    """Lowest P(sorghum) that reaches the precision target, with its validation numbers."""
+    """A threshold on P(sorghum) with its validation numbers."""
 
     threshold: float
     precision: float
     recall: float
     predicted_sorghum: int
+    decision_accuracy: float
 
 
 def choose_sorghum_threshold(
     sorghum_probabilities: np.ndarray,
     is_sorghum: np.ndarray,
-    precision_target: float,
+    min_precision: float,
     min_predictions: int,
 ) -> SorghumThreshold:
     """Picks the gate threshold on P(sorghum).
 
-    Among thresholds whose precision reaches the target and that pass at least
-    `min_predictions` photos, the lowest is chosen, since it keeps the most true sorghum
-    (highest recall). Raises ValueError when no threshold qualifies, because shipping a gate
-    that cannot meet its precision target would pass look-alikes on to cultivar matching.
+    Among thresholds whose precision reaches `min_precision` and that pass at least
+    `min_predictions` photos, the one with the highest decision accuracy (share of photos
+    on the right side of the threshold) is chosen, since that is what the ship bar measures;
+    ties go to the lowest threshold, which keeps the most true sorghum. Raises ValueError when
+    no threshold qualifies, because shipping a gate that cannot meet its precision floor
+    would pass look-alikes on to cultivar matching.
     """
     positives = int(is_sorghum.sum())
     if positives == 0:
@@ -107,18 +110,21 @@ def choose_sorghum_threshold(
             continue
         true_positives = int((passed & is_sorghum).sum())
         precision = true_positives / predicted
-        if precision >= precision_target:
+        if precision < min_precision:
+            continue
+        decision_accuracy = float((passed == is_sorghum).mean())
+        # Candidates are ascending, so ">" keeps the lowest threshold of a tie.
+        if best is None or decision_accuracy > best.decision_accuracy:
             best = SorghumThreshold(
                 threshold=float(candidate),
                 precision=precision,
                 recall=true_positives / positives,
                 predicted_sorghum=predicted,
+                decision_accuracy=decision_accuracy,
             )
-            # Candidates are ascending, so the first qualifying one has the highest recall.
-            break
     if best is None:
         raise ValueError(
-            f"no threshold reaches sorghum precision {precision_target} with at least "
+            f"no threshold reaches sorghum precision {min_precision} with at least "
             f"{min_predictions} predictions; more or cleaner data is needed"
         )
     return best
@@ -146,7 +152,13 @@ def most_precise_sorghum_threshold(
         true_positives = int((passed & is_sorghum).sum())
         precision = true_positives / predicted
         if best is None or precision > best.precision:
-            best = SorghumThreshold(float(candidate), precision, true_positives / positives, predicted)
+            best = SorghumThreshold(
+                threshold=float(candidate),
+                precision=precision,
+                recall=true_positives / positives,
+                predicted_sorghum=predicted,
+                decision_accuracy=float((passed == is_sorghum).mean()),
+            )
     if best is None:
         raise ValueError(f"no threshold passes at least {min_predictions} validation photos")
     return best

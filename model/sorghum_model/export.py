@@ -7,6 +7,7 @@ of the validation split, because those are the outputs the phones will see.
 
 import datetime
 import json
+import tempfile
 from pathlib import Path
 
 import keras
@@ -30,11 +31,22 @@ from sorghum_model.quantization import (
     measured_logit_tolerance,
     quantize_input,
 )
-from sorghum_model.settings import MODEL_INPUT_SIZE_PX, ExportSettings
-from sorghum_model.ship_bar import enforce_ship_bar, ship_bar_problems, sorghum_decision_accuracy
+from sorghum_model.settings import MODEL_INPUT_SIZE_PX, Backbone, ExportSettings
+from sorghum_model.ship_bar import (
+    converter_version_problems,
+    enforce_ship_bar,
+    ship_bar_problems,
+    sorghum_decision_accuracy,
+)
 from sorghum_model.species_classes import SPECIES_CLASS_NAMES, SpeciesGroup, species_class
 from sorghum_model.splits import Split, count_per_class_and_split
-from sorghum_model.train import KERAS_MODEL_FILE, SAVED_MODEL_DIR, SHUFFLE_SEED, class_indices, load_images
+from sorghum_model.train import (
+    KERAS_MODEL_FILE,
+    SHUFFLE_SEED,
+    TRAINING_REPORT_FILE,
+    class_indices,
+    load_images,
+)
 
 FIXTURE_EXPECTATIONS_FILE = "expected.json"
 
@@ -60,8 +72,9 @@ def export_model(
     validation = [r for r in records if splits[r.sha256] is Split.VALIDATION]
     test = [r for r in records if splits[r.sha256] is Split.TEST]
 
+    float_model = keras.models.load_model(run_dir / KERAS_MODEL_FILE)
     representative = _sample(train, settings.representative_images)
-    model_bytes = _convert_to_int8(run_dir / SAVED_MODEL_DIR, load_images(representative, data_root))
+    model_bytes = _convert_to_int8(float_model, load_images(representative, data_root))
     runner = _TfliteRunner(model_bytes)
 
     validation_images = load_images(validation, data_root)
@@ -69,8 +82,8 @@ def export_model(
     test_images = load_images(test, data_root)
     test_labels = class_indices(test)
 
-    float_model = keras.models.load_model(run_dir / KERAS_MODEL_FILE)
     float_test_logits = float_model.predict(test_images.astype(np.float32), verbose=0)
+    float_validation_logits = float_model.predict(validation_images.astype(np.float32), verbose=0)
     int8_test_logits = runner.logits(test_images)
     int8_validation_logits = runner.logits(validation_images)
 
@@ -83,11 +96,11 @@ def export_model(
         threshold = choose_sorghum_threshold(
             validation_sorghum,
             is_validation_sorghum,
-            settings.sorghum_precision_target,
+            settings.min_sorghum_precision,
             settings.min_threshold_predictions,
         )
     except ValueError as error:
-        # Missing the precision target is a ship-bar miss like the others: refused below
+        # Missing the precision floor is a ship-bar miss like the others: refused below
         # unless --allow-below-bar, which then uses the strictest threshold the data allows.
         threshold_problems.append(str(error))
         threshold = most_precise_sorghum_threshold(
@@ -99,14 +112,32 @@ def export_model(
     ) | {
         "validationSorghumPrecision": threshold.precision,
         "validationSorghumRecall": threshold.recall,
+        "validationSorghumDecisionAccuracy": threshold.decision_accuracy,
     }
     parity = _quantization_parity(float_test_logits, int8_test_logits, test_labels)
+    # For comparison only: what the float model would score with its own temperature and
+    # threshold. The phones run the INT8 model, so the bar is judged on INT8.
+    evaluation["float"] = _float_evaluation(
+        float_validation_logits, validation_labels, float_test_logits, test_labels,
+        sorghum_index, settings,
+    )
+    xnnpack_error = xnnpack_load_error(model_bytes)
+    parity["loadsWithXnnpack"] = xnnpack_error is None
+    parity["converterTensorflowVersion"] = tf.__version__
     # Checked before anything is written, so a model below the bar never reaches out_dir.
-    problems = threshold_problems + ship_bar_problems(
-        evaluation["testSorghumDecisionAccuracy"],
-        parity["floatAccuracy"],
-        parity["int8Accuracy"],
-        settings,
+    # Phones run LiteRT with XNNPACK, so a model that loads only with the reference kernels
+    # would fail on device.
+    xnnpack_problems = [f"INT8 model does not load under XNNPACK: {xnnpack_error}"] if xnnpack_error else []
+    problems = (
+        threshold_problems
+        + xnnpack_problems
+        + converter_version_problems(tf.__version__, settings)
+        + ship_bar_problems(
+            evaluation["testSorghumDecisionAccuracy"],
+            parity["floatAccuracy"],
+            parity["int8Accuracy"],
+            settings,
+        )
     )
     below_bar = enforce_ship_bar(problems, allow_below_bar)
 
@@ -144,6 +175,7 @@ def export_model(
             "problems": problems,
         },
         below_bar=below_bar,
+        backbone=_trained_backbone(run_dir),
     )
     write_metadata(metadata, output_dir / metadata_file)
     logit_tolerance = runner.logit_step() or measured_logit_tolerance(
@@ -154,6 +186,54 @@ def export_model(
         logit_tolerance,
     )
     return output_dir / metadata_file
+
+
+def xnnpack_load_error(model_bytes: bytes) -> str | None:
+    """Loads the model with TFLite's default delegates (XNNPACK on CPU), as phones do.
+
+    Returns None when it loads and runs one inference, else the interpreter's error.
+    """
+    try:
+        interpreter = tf.lite.Interpreter(model_content=model_bytes)
+        interpreter.allocate_tensors()
+        detail = interpreter.get_input_details()[0]
+        interpreter.set_tensor(detail["index"], np.zeros(detail["shape"], dtype=detail["dtype"]))
+        interpreter.invoke()
+    except (RuntimeError, ValueError) as error:
+        return " ".join(str(error).split())
+    return None
+
+
+def _float_evaluation(validation_logits, validation_labels, test_logits, test_labels, sorghum_index, settings):
+    """Test numbers of the float model with a temperature and threshold fitted on its own
+    validation outputs, to show what quantization costs."""
+    temperature = fit_temperature(validation_logits, validation_labels)
+    validation_sorghum = softmax(validation_logits, temperature)[:, sorghum_index]
+    is_sorghum = validation_labels == sorghum_index
+    try:
+        threshold = choose_sorghum_threshold(
+            validation_sorghum, is_sorghum, settings.min_sorghum_precision, settings.min_threshold_predictions
+        )
+    except ValueError:
+        threshold = most_precise_sorghum_threshold(validation_sorghum, is_sorghum, settings.min_threshold_predictions)
+    evaluation = _evaluate(test_logits, test_labels, temperature, threshold.threshold, sorghum_index, settings)
+    return evaluation | {
+        "temperature": temperature,
+        "sorghumThreshold": threshold.threshold,
+        "validationSorghumPrecision": threshold.precision,
+        "validationSorghumRecall": threshold.recall,
+        "validationSorghumDecisionAccuracy": threshold.decision_accuracy,
+    }
+
+
+def _trained_backbone(run_dir: Path) -> str:
+    """The backbone the run was trained with; runs from before the setting used the full variant."""
+    report_path = run_dir / TRAINING_REPORT_FILE
+    if report_path.exists():
+        settings = json.loads(report_path.read_text(encoding="utf-8")).get("settings", {})
+        if "backbone" in settings:
+            return str(Backbone(settings["backbone"]))
+    return str(Backbone.MOBILENET_V3_SMALL)
 
 
 class _TfliteRunner:
@@ -195,21 +275,30 @@ class _TfliteRunner:
         )
 
 
-def _convert_to_int8(saved_model_dir: Path, representative_images: np.ndarray) -> bytes:
-    """Full-integer post-training quantization with uint8 input and float32 logits output."""
+def _convert_to_int8(model: keras.Model, representative_images: np.ndarray) -> bytes:
+    """Full-integer post-training quantization with uint8 input and float32 logits output.
+
+    The SavedModel is written here, by the TensorFlow that converts it, and not by training:
+    training runs on a newer TensorFlow than the phones' converter (ExportSettings.
+    converter_tensorflow_version), and a graph from one version is not guaranteed to convert
+    the same way in another.
+    """
 
     def representative_dataset():
         for image in representative_images:
             yield [image[np.newaxis].astype(np.float32)]
 
-    converter = tf.lite.TFLiteConverter.from_saved_model(str(saved_model_dir))
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
-    converter.representative_dataset = representative_dataset
-    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
-    converter.inference_input_type = tf.uint8
-    # Float logits keep temperature scaling and softmax exact in `shared/`.
-    converter.inference_output_type = tf.float32
-    return converter.convert()
+    with tempfile.TemporaryDirectory() as directory:
+        saved_model_dir = Path(directory) / "saved_model"
+        model.export(str(saved_model_dir))
+        converter = tf.lite.TFLiteConverter.from_saved_model(str(saved_model_dir))
+        converter.optimizations = [tf.lite.Optimize.DEFAULT]
+        converter.representative_dataset = representative_dataset
+        converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+        converter.inference_input_type = tf.uint8
+        # Float logits keep temperature scaling and softmax exact in `shared/`.
+        converter.inference_output_type = tf.float32
+        return converter.convert()
 
 
 def _quantization_parity(float_logits: np.ndarray, int8_logits: np.ndarray, labels: np.ndarray) -> dict:

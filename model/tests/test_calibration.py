@@ -48,14 +48,41 @@ def test_ece_of_confidently_wrong_model_is_its_confidence():
     assert expected_calibration_error(probabilities, labels, bins=10) == pytest.approx(0.9)
 
 
-def test_threshold_is_lowest_reaching_precision_target():
+def test_threshold_is_the_lowest_of_equally_accurate_ones_reaching_the_floor():
     probabilities = np.array([0.95, 0.9, 0.8, 0.7, 0.6])
     is_sorghum = np.array([True, True, True, False, True])
     chosen = choose_sorghum_threshold(probabilities, is_sorghum, 0.99, min_predictions=1)
-    # 0.6 and 0.7 include the look-alike at 0.7 (precision 0.8 and 0.75); 0.8 is clean.
+    # 0.6 and 0.7 include the look-alike at 0.7 (precision 0.8 and 0.75); 0.8, 0.9 and 0.95
+    # are clean, and 0.8 puts the most photos on the right side (4 of 5).
     assert chosen.threshold == 0.8
     assert chosen.precision == 1.0
     assert chosen.recall == 0.75
+    assert chosen.decision_accuracy == 0.8
+
+
+def test_threshold_maximises_decision_accuracy_not_recall():
+    probabilities = np.array([0.9, 0.8, 0.7, 0.6, 0.5])
+    is_sorghum = np.array([True, True, False, False, True])
+    # Floor 0.6: 0.5 (precision 3/5, accuracy 3/5) and 0.7 (2/3, 3/5) qualify, but 0.8
+    # (precision 1, accuracy 4/5) is more accurate although its recall is lower.
+    chosen = choose_sorghum_threshold(probabilities, is_sorghum, 0.6, min_predictions=1)
+    assert chosen.threshold == 0.8
+    assert chosen.decision_accuracy == pytest.approx(0.8)
+
+
+@pytest.mark.parametrize(
+    ("floor", "qualifies"), [(0.6 - 1e-9, True), (0.6, True), (0.6 + 1e-9, False)]
+)
+def test_precision_floor_boundary(floor, qualifies):
+    probabilities = np.array([0.9, 0.8, 0.7, 0.6, 0.5])
+    is_sorghum = np.array([True, True, False, False, True])
+    # With at least 5 predictions only the 0.5 threshold is eligible; its precision is 0.6.
+    if qualifies:
+        chosen = choose_sorghum_threshold(probabilities, is_sorghum, floor, min_predictions=5)
+        assert chosen.threshold == 0.5
+    else:
+        with pytest.raises(ValueError, match="no threshold"):
+            choose_sorghum_threshold(probabilities, is_sorghum, floor, min_predictions=5)
 
 
 def test_threshold_needs_enough_predictions():
