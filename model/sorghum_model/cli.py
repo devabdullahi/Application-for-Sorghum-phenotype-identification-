@@ -31,11 +31,13 @@ from sorghum_model.settings import (
     ExportSettings,
     GrinDescriptorSettings,
     LabelReviewSettings,
+    MfwdEvaluationSettings,
     PublicDatasetSettings,
     RaceCrosswalkSettings,
     RaceGateSettings,
     RaceRuleSearchSettings,
     RaceTrainingSettings,
+    SpeciesDecisionSettings,
     SplitSettings,
     TrainingSettings,
     TraitGateSettings,
@@ -92,6 +94,8 @@ def main(argv: list[str] | None = None) -> int:
     _add_split(commands)
     _add_train(commands)
     _add_export(commands)
+    _add_mfwd_predict(commands)
+    _add_mfwd_report(commands)
     _add_race_train(commands)
     _add_race_export(commands)
     _add_bundle_heads(commands)
@@ -1223,6 +1227,55 @@ def _load_records_and_splits(manifests, split_manifest: Path):
             f"{len(unsplit)} photos are not in {split_manifest}; run `sorghum-model split` again"
         )
     return records, splits
+
+
+def _add_mfwd_predict(commands) -> None:
+    command = commands.add_parser(
+        "mfwd-predict",
+        help="External check: run the species model on MFWD plant crops (needs TensorFlow).",
+    )
+    command.add_argument("--ground-truth", type=Path, required=True, help="MFWD gt.csv.")
+    command.add_argument(
+        "--jpegs-dir", type=Path, required=True,
+        help="MFWD jpegs/ folder (<EPPO>/<tray>.zip); trays not downloaded are skipped.",
+    )
+    command.add_argument("--model-dir", type=Path, required=True, help="Holds traits-vN.{tflite,json}.")
+    command.add_argument("--version", type=int, required=True, help="Model version N.")
+    command.add_argument("--out", type=Path, required=True, help="Predictions CSV to write.")
+    command.add_argument(
+        "--threads", type=int, default=2,
+        help="Interpreter threads; keep low when other jobs share the machine.",
+    )
+    command.set_defaults(run=_run_mfwd_predict)
+
+
+def _run_mfwd_predict(arguments) -> None:
+    from sorghum_model.mfwd import predict_trays
+
+    count = predict_trays(
+        arguments.ground_truth, arguments.jpegs_dir, arguments.model_dir, arguments.version,
+        arguments.out, MfwdEvaluationSettings(), SpeciesDecisionSettings(), arguments.threads,
+    )
+    print(f"wrote {count} crop predictions to {arguments.out}")
+
+
+def _add_mfwd_report(commands) -> None:
+    command = commands.add_parser(
+        "mfwd-report", help="Score MFWD crop predictions per photo, plant, stage and EPPO code."
+    )
+    command.add_argument("--predictions", type=Path, required=True)
+    command.add_argument("--out", type=Path, required=True, help="Report JSON to write.")
+    command.set_defaults(run=_run_mfwd_report)
+
+
+def _run_mfwd_report(arguments) -> None:
+    import json
+
+    from sorghum_model.mfwd import evaluation_report, format_report, read_predictions
+
+    report = evaluation_report(read_predictions(arguments.predictions), MfwdEvaluationSettings())
+    arguments.out.write_text(json.dumps(report, indent=2) + "\n")
+    print(format_report(report))
 
 
 if __name__ == "__main__":
