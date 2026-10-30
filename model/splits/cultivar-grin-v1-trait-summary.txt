@@ -1,48 +1,48 @@
-9393 photos of 8964 accessions (accession_split)
+9410 photos of 8965 accessions (accession_split)
 
 glumeColour (GRIN GLUMECOLOR)
-  excluded, no-observation: 3867 accessions
+  excluded, no-observation: 3868 accessions
   excluded, unmapped-value: 0 accessions
   excluded, no-single-state: 973 accessions [Tan 439, Segregating 315, Mixed 219]
-  excluded, conflicting-observations: 51 accessions [Black + Purple 14, Purple + Tan 9, Purple + Red 8, Black + Red 3, Black + Mixed 3, Black + Mahogany 2]
+  excluded, conflicting-observations: 51 accessions [Black + Purple 14, Purple + Tan 9, Purple + Red 8, Black + Mixed 3, Black + Red 3, Purple + Sienna 2]
   head states (>= 20 train accessions): 1, 2, 3, 4, 5, 6
    state   train acc/img  validation acc/img   test acc/img
        1         304/314               64/69          67/69
-       2           43/44                 6/6            8/8
+       2           43/45                 6/6            8/8
        3           71/71               18/18          14/14
        4         278/290               70/71          74/75
-       5       1387/1480             289/316        286/302
-       6         739/751             169/171        186/187
-  scored       2950/6546            651/1441       655/1406  (images in a head state / all images)
+       5       1387/1481             289/316        286/303
+       6         739/753             169/172        186/189
+  scored       2954/6555            652/1444       658/1411  (images in a head state / all images)
 
 grainColour (GRIN KERCOLOR)
   excluded, no-observation: 2537 accessions
   excluded, unmapped-value: 0 accessions
   excluded, no-single-state: 938 accessions [Mixed 938]
-  excluded, conflicting-observations: 79 accessions [Brown + Mixed 12, Mixed + Red 11, White + Yellow 9, Mixed + White 6, Buff + White 6, Brown + Red 5]
+  excluded, conflicting-observations: 79 accessions [Brown + Mixed 12, Mixed + Red 11, White + Yellow 9, Mixed + White 6, Buff + White 6, Mixed + Yellow 5]
   head states (>= 20 train accessions): 1, 2, 3, 4, 5
    state   train acc/img  validation acc/img   test acc/img
-       1       1643/1689             375/396        373/382
-       2         569/600             127/136        109/113
+       1       1643/1691             375/396        373/383
+       2         569/601             127/137        109/113
        3         541/573               85/92        112/118
-       4         912/934             207/210        216/221
+       4         912/934             207/212        217/223
        5           88/90               20/20          13/13
        6           14/14                 2/2            4/4  (no output)
-  scored       3886/6546            854/1441       847/1406  (images in a head state / all images)
+  scored       3889/6555            857/1444       850/1411  (images in a head state / all images)
 
 panicleCompactnessAndShape (GRIN PANICLECOM+PANICLESHP, PANICLECOM, PANICLESHP)
-  excluded, no-observation: 3575 accessions
+  excluded, no-observation: 3576 accessions
   excluded, unmapped-value: 0 accessions
-  excluded, no-single-state: 2188 accessions [Semi-loose / Elliptical 874, Loose / Elliptical 281, Loose 271, Mixed / Segregating 208, Semi-compact / Oval 206, Mixed / Elliptical 110]
-  excluded, conflicting-observations: 37 accessions [Compact / Elliptical + Semi-compact / Elliptical 14, Compact + Compact / Oval 4, Compact / Oval + Semi-compact / Elliptical 2, Semi-compact / Elliptical + Semi-loose / Elliptical 2, Compact / Elliptical + Loose / Lax 2, Loose / Elliptical + Semi-compact / Elliptical 2]
+  excluded, no-single-state: 2188 accessions [Semi-loose / Elliptical 874, Loose / Elliptical 281, Loose 271, Mixed / Segregating 208, Semi-compact / Oval 206, Semi-loose / Oval 110]
+  excluded, conflicting-observations: 37 accessions [Compact / Elliptical + Semi-compact / Elliptical 14, Compact + Compact / Oval 4, Compact / Oval + Semi-compact / Elliptical 2, Loose / Elliptical + Semi-compact / Elliptical 2, Semi-compact / Elliptical + Semi-loose 2, Semi-compact / Elliptical + Semi-loose / Elliptical 2]
   head states (>= 20 train accessions): 1, 8, 9, 10
    state   train acc/img  validation acc/img   test acc/img
-       1         492/528             100/107        114/121
-       8       1117/1157             229/235        240/246
-       9         266/274               66/72          73/74
+       1         492/529             100/107        114/121
+       8       1117/1162             229/235        240/248
+       9         266/274               66/73          73/74
       10         297/322              88/100          63/66
       12           18/18                 1/1            0/0  (no output)
-  scored       2281/6546            514/1441       507/1406  (images in a head state / all images)
+  scored       2287/6555            515/1444       509/1411  (images in a head state / all images)
 
 hundredSeedWeight (GRIN SEEDWEIGHT)
   excluded, no-observation: 12 accessions
@@ -51,7 +51,7 @@ hundredSeedWeight (GRIN SEEDWEIGHT)
   excluded, conflicting-observations: 0 accessions
   head states (>= 20 train accessions): 3, 5, 7
    state   train acc/img  validation acc/img   test acc/img
-       3         697/722             138/145        153/164
-       5       2531/2641             568/592        556/579
-       7       3015/3175             660/703        634/660
-  scored       6538/6546           1440/1441      1403/1406  (images in a head state / all images)
+       3         697/725             138/147        153/164
+       5       2531/2643             568/592        556/581
+       7       3015/3179             660/704        635/663
+  scored       6547/6555           1443/1444      1408/1411  (images in a head state / all images)
