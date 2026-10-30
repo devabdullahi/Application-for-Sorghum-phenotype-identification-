@@ -9,7 +9,8 @@
 #   ios/scripts/install-species-model.sh <export-dir>
 # which checks that traits-vN.tflite and traits-vN.json share N, replaces the old version and
 # regenerates the project. The app loads the highest N it finds (BundledSpeciesModel).
-# Parity fixtures are read from shared/src/commonTest/resources/species/ (SpeciesModelParityTests).
+# Parity fixtures are read from shared/src/commonTest/resources/species/ (SpeciesModelParityTests)
+# and shared/src/commonTest/resources/basic-race/ (BasicRaceModelParityTests).
 name: SorghumCapture
 options:
   bundleIdPrefix: com.sorghum
@@ -68,6 +69,10 @@ targets:
       # a "species" folder; SpeciesModelParityTests skips while it holds no expected.json. The
       # folder is kept in git (.gitkeep) because Xcode fails on a missing folder reference.
       - path: ../shared/src/commonTest/resources/species
+        type: folder
+        buildPhase: resources
+      # Basic-race parity fixtures (traits-v3 output 1), read by BasicRaceModelParityTests.
+      - path: ../shared/src/commonTest/resources/basic-race
         type: folder
         buildPhase: resources
     dependencies:

@@ -445,6 +445,51 @@ the phone ship test, ADR-0011). `RaceRuleSearchSettings.coverage_margin` keeps i
 `choose_answer_rule(..., replace(BASIC_RACE_RULE_SEARCH, coverage_margin=0.05))` gives the rule.
 The 0.02 margin gives back the locked 0.89 rule with 0.8326 coverage, which checks the outputs.
 
+### traits-v3: species and basic-race in one file (T19 #45, 2026-10-30)
+
+`traits-v3.tflite` holds the species model (traits-v2) and the experimental basic-race output
+(basic-race-v1) as two outputs of one LiteRT model, with one shared uint8 input
+([ADR-0012](../docs/architecture/adr/0012-traits-v3-two-networks-one-file.md)). Nothing was
+retrained or re-quantized. The two converted files are merged structurally
+(`model_bundle.merge_models`), so each output is bit-identical to its source model, and both
+locked evaluations still describe the file.
+
+```sh
+# export extra (TF 2.17): merge, check bit-identity, write metadata and both fixture sets
+python -m sorghum_model.cli bundle-heads --version 3 \
+  --species-export-dir <runs>/v2-3/export --species-fixtures-dir <runs>/v2-3/fixtures \
+  --basic-race-export-dir <runs>/basic-race-1/export --data-root <data>/cultivar \
+  --out-dir <runs>/traits-v3/export --fixtures-root ../shared/src/commonTest/resources
+```
+
+| | traits-v2 | traits-v3 |
+|---|---|---|
+| outputs (`headOrder`) | 0 species [9] | 0 species [9], 1 basicRace [5] |
+| file size | 2,719,192 bytes | 5,433,744 bytes |
+| sha256 | `127239c4443b9bfbb47875ba703c698a1bce6da80609f5e387d6845cf8c24d51` | `883d4f9962f68a45da202d5726feba2fd7e38343cce05f72eb3b41f5141c400c` |
+| one inference, Mac CPU, XNNPACK, 1 / 4 threads | 2.8 / 1.3 ms | 5.8 / 2.6 ms |
+
+- **Bit-identity:** `bundle-heads` refuses to write unless both merged outputs equal their
+  source models exactly. It checks all 645 validation and 648 test basic-race photos and the
+  12 species fixtures. The species fixtures' logits are unchanged; only `modelVersion` became 3.
+- **`heads.basicRace`** in `traits-v3.json`:
+  - `races` in output order
+  - the INT8 temperature (1.385)
+  - the gate answer rule chosen on validation (`groupProbabilityMass` 0.89, `maxGroupSize` 2)
+  - `experimental: true` and `meetsAccuracyGoal: false`
+  - a `status` text that says the output misses the 89% goal
+  - the locked basic-race-v1 evaluation, unchanged
+  - the source model's checksum and provenance
+
+  `trainingData.sourceModels` records both source files.
+- **Parity fixtures:** `shared/src/commonTest/resources/basic-race/` holds 10 basic-race test
+  photos, two per race. Their answers include single races, pairs and "unrecognized". Each
+  fixture has its INT8 logits, probabilities and the Python answer (`race_evaluation.returned_group`).
+  The iOS test checks the logits within 2 x `logitStep` (0.0805) and checks that shared
+  `readBasicRace` gives the Python answer.
+- **Not a pass:** the basic-race output stays experimental. It does not meet the 89% race goal
+  (#44), gates nothing, and no UI shows it.
+
 ## Trait heads (T12, #35, 2026-10-30)
 
 Learned trait heads trained from GRIN descriptors on the GRIN photos, scored once on the
@@ -650,6 +695,7 @@ uv run --extra export sorghum-model export --run-dir runs/species-v1 --version 1
 | `export.py` | INT8 conversion, float-vs-INT8 parity, temperature, threshold, fixtures |
 | `calibration.py` | Temperature fit, ECE, sorghum threshold choice |
 | `metadata.py` | Builds and validates `traits-vN.json` |
+| `model_bundle.py`, `bundle_export.py` | Structural merge of two INT8 models into one file with one output each; traits-v3 metadata and fixtures (ADR-0012) |
 | `cultivar_traits.py` | Per-accession trait labels from GRIN descriptors, exclusions, head states |
 | `trait_training.py`, `trait_export.py` | Multi-head trait model training, INT8 export, per-head temperature and R6 gate |
 | `trait_evaluation.py` | Trait head scores, baselines, the R6 gate, TFLite output matching |
@@ -667,8 +713,10 @@ uv run --extra export sorghum-model export --run-dir runs/species-v1 --version 1
   2 x logitStep. If the model has no int8 logit tensor, `logitStep` holds (and
   `logitParityMaxDelta` repeats) the
   largest float-vs-INT8 logit difference on the test split. `logitToleranceSource` says which.
-- **Output:** one float logits vector per head. Species logits follow the class order in
-  `heads.species.classes`.
+- **Output:** one float logits vector per head, at the head's `outputIndex` (`headOrder` lists
+  them). Species logits follow the class order in `heads.species.classes`. The experimental
+  basic-race logits (traits-v3 output 1) follow `heads.basicRace.races`, and `shared/` applies
+  its `answerRule` in `readBasicRace`.
 - **Decision:** `shared/species` applies `softmax(logits / temperature)` and continues only
   when P(sorghum) >= `sorghumThreshold`. The threshold is the most accurate one on
   validation with at least 95% sorghum precision (`ExportSettings`, an assumption).

@@ -13,7 +13,7 @@ The product goal is a sorghum identifier. The trait pipeline (ADR-0001) assumes 
 ## Decision
 Option 2. After the quality check, a `species` step classifies the photo as **sorghum / look-alike (named) / other plant / no plant**, as a probability distribution. Only "sorghum" above a calibrated threshold continues to calibration, traits and reasoning; otherwise the user sees "not sorghum" (with the look-alike name when confident) or "unsure — retake".
 
-- The species head shares the MobileNetV3-Small backbone with the later per-trait heads (ADR-0004): one `.tflite`, one runtime, heads added over time. (2026-10-30: the backbone is now MobileNetV2, because MobileNetV3-Small loses about 10 points to INT8; see ADR-0010.)
+- The species head shares the MobileNetV3-Small backbone with the later per-trait heads (ADR-0004): one `.tflite`, one runtime, heads added over time. (2026-10-30: the backbone is now MobileNetV2, because MobileNetV3-Small loses about 10 points to INT8; see ADR-0010.) (2026-10-30: traits-v3 also packs the separately fine-tuned basic-race network into the same file, as a second output; see ADR-0012.)
 - Runs through the same `LearnedTraitModel`-style port, renamed `ImageModel`, with preprocessing in `shared/`.
 - Classes and threshold are data in the model metadata, not code.
 - Runs on iPhone and Android with the same model file and the same shared decision code; iOS is integrated first (LiteRT for iOS), Android next. A parity test checks both give the same species probabilities on shared fixtures.
