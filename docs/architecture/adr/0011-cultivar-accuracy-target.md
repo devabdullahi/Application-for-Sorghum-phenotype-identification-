@@ -1,6 +1,14 @@
 # ADR-0011: What "89% sorghum type accuracy" means, and how to reach it
 
-Status: Draft, **ASSUMPTION — confirm** with the product owner · Date: 2026-10-30
+Status: Accepted, amended by [ADR-0013](0013-five-race-type-evaluation-protocol.md) · Date: 2026-10-30
+
+> **Amended 2026-10-30 (ADR-0013).** The product owner confirmed the taxonomy: "type" means the
+> **five basic races** (Bicolor, Guinea, Caudatum, Kafir, Durra). Intermediates are reported
+> separately and do not gate. The metric, gate and sealed test are frozen in
+> [type-evaluation-protocol.md](../type-evaluation-protocol.md) (`type-eval-v1`): accession-level
+> group-aware accuracy (groups of at most two races, abstention not correct), selective
+> accuracy >= 0.89 at coverage >= 0.80. Where the text below says "fifteen races", that
+> applies to race-v1 only.
 
 ## Context
 The product goal is ">= 89% accuracy on identifying sorghum types". ADR-0001 chose trait-first identification: photo → IBPGR/ICRISAT descriptor-state probabilities → naive Bayes over Genesys accession tables → top matches, a group, or "unrecognized". This note checks that goal against the image data that can actually be obtained, and says how accuracy should be measured.
