@@ -36,6 +36,7 @@ from sorghum_model.settings import (
     PublicDatasetSettings,
     RaceCrosswalkSettings,
     RaceGateSettings,
+    RaceLabelCleaningSettings,
     RaceRuleSearchSettings,
     RaceTrainingSettings,
     SpeciesDecisionSettings,
@@ -71,6 +72,7 @@ DEFAULT_GRIN_ACCESSION_PAGE_CACHE = DEFAULT_CULTIVAR_DATA_ROOT / "grin-accession
 DEFAULT_FRONTIERS_TABLE = DEFAULT_CULTIVAR_DATA_ROOT / "frontiers-2023" / "tables.xlsx"
 DEFAULT_RACE_CROSSWALK = DEFAULT_MANIFEST_DIR / "race-crosswalk-frontiers.csv"
 DEFAULT_CORE_SHORTLIST = DEFAULT_MANIFEST_DIR / "core-accession-shortlist.csv"
+DEFAULT_BASIC_RACE_TRAINING_LABELS = DEFAULT_MANIFEST_DIR / "basic-race-training-labels.csv"
 # Names the cultivar split scheme; see SplitSettings.salt.
 CULTIVAR_SPLIT_SALT = "cultivar-grin-v1"
 # Same cadence as the species downloaders: losing at most this many rows on a crash is cheap,
@@ -93,6 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     _add_grin_descriptors(commands)
     _add_race_crosswalk(commands)
     _add_core_shortlist(commands)
+    _add_race_label_clean(commands)
     _add_review_labels(commands)
     _add_split(commands)
     _add_train(commands)
@@ -766,6 +769,40 @@ def _run_race_crosswalk(arguments) -> None:
     summary.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
     print(f"{len(rows)} rows written to {arguments.out}; summary in {summary}")
+
+
+def _add_race_label_clean(commands) -> None:
+    command = commands.add_parser(
+        "race-label-clean",
+        help="Apply the confirmed-label rule (ADR-0013) to basic-race training and validation labels, "
+        "with an exclusion reason per accession and the documented fallback.",
+    )
+    command.add_argument("--splits", type=Path, default=DEFAULT_CULTIVAR_SPLIT)
+    command.add_argument("--descriptors", type=Path, default=DEFAULT_GRIN_DESCRIPTORS)
+    command.add_argument("--crosswalk", type=Path, default=DEFAULT_RACE_CROSSWALK)
+    command.add_argument("--out", type=Path, default=DEFAULT_BASIC_RACE_TRAINING_LABELS)
+    command.set_defaults(run=_run_race_label_clean)
+
+
+def _run_race_label_clean(arguments) -> None:
+    from sorghum_model import race_label_cleaning
+    from sorghum_model.cultivar_manifest import read_cultivar_split
+    from sorghum_model.grin_descriptors import read_observations
+    from sorghum_model.race_crosswalk import read_crosswalk
+
+    settings = RaceLabelCleaningSettings()
+    cleaned = race_label_cleaning.clean_basic_race_labels(
+        read_cultivar_split(arguments.splits),
+        read_observations(arguments.descriptors),
+        read_crosswalk(arguments.crosswalk),
+        settings,
+    )
+    race_label_cleaning.write_training_labels(cleaned.rows, arguments.out)
+    lines = race_label_cleaning.cleaning_report(cleaned, settings)
+    summary = arguments.out.with_name(f"{arguments.out.stem}-summary.txt")
+    summary.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print("\n".join(lines))
+    print(f"{len(cleaned.rows)} rows written to {arguments.out}; summary in {summary}")
 
 
 def _add_core_shortlist(commands) -> None:

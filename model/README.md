@@ -340,6 +340,52 @@ every race is full for development. Three things can close the test gap, and non
 
 Until the gap is closed, protocol 5.1 holds every race's test count at the smallest race's.
 
+### Basic-race training labels (T32, #62, 2026-10-30)
+
+`race-label-clean` applies the confirmed-label rule (ADR-0013, protocol 5.2) to the basic-race
+training and validation accessions of `accession_split` (`race_label_cleaning.py`,
+`RaceLabelCleaningSettings`). Test accessions are not read: the GRIN test split was scored once
+for basic-race-v1 and is seen.
+
+- **Confirmed:** Frontiers 2023 names the same basic race (`corroborated`), or two or more GRIN
+  plantings recorded the same race (`repeated`).
+- **Excluded, one reason per accession:** `second-source-disagrees` (Frontiers names another race
+  or an intermediate of it), `single-observation` (one GRIN observation, no second source),
+  `conflicting-observations`, `intermediate-race`, `no-scored-race`.
+
+```bash
+uv run sorghum-model race-label-clean   # reads the split, descriptor and crosswalk manifests; about 1 s
+```
+
+Output: `manifests/basic-race-training-labels.csv` (7,618 accessions: tier, reason, weight) and
+`-summary.txt`. Accessions (photos) labelled one basic race by GRIN:
+
+| Race | train labelled | train confirmed | train single-obs. | train Frontiers disagrees | validation labelled | validation confirmed |
+|---|---|---|---|---|---|---|
+| Bicolor | 112 (114) | **3** | 109 | 0 | 21 | **0** |
+| Caudatum | 1,568 (1,595) | 21 (8 corroborated, 13 repeated) | 1,545 | 2 | 342 (350) | 7 |
+| Durra | 863 (940) | 27 (all repeated) | 836 | 0 | 197 (224) | 8 |
+| Guinea | 153 (153) | **1** | 152 | 0 | 25 | **0** |
+| Kafir | 126 (128) | **0** | 126 | 0 | 25 | **0** |
+| **all** | 2,822 (2,930) | 52 | 2,768 | 2 | 610 (645) | 15 |
+
+Only 1.8% of the training labels and 2.5% of the validation labels are confirmed. Confirmed-only
+training is impossible: Bicolor, Guinea and Kafir fall below
+`min_confirmed_train_accessions_per_race` (20), and Kafir has none at all.
+
+**Fallback (chosen: weighting, option a).** The short races are not refilled. When any race is
+short, every race is weighted the same way: confirmed 1.0, single-observation
+`single_observation_weight` = 0.79 (the crosswalk's basic-race agreement, 23/29 [0.62, 0.90]:
+the estimated share of one-curator labels that are right), and contradicted, conflicting and
+intermediate labels 0. The other option, keeping single-observation labels only for the short
+races, was rejected: Caudatum and Durra would train on 21 and 27 accessions next to 395
+single-observation Bicolor, Guinea and Kafir photos. The two commonest races would look the
+rarest, because the class balance would follow how often each race happened to be confirmed. Under the fallback, 2,820 training accessions (2,928 photos)
+keep a weight above 0; only the 2 Frontiers-contradicted Caudatum accessions leave basic-race-v1's
+training set. So the cleaned set is almost the all-label baseline with confirmed labels counting
+a little more. Cleaning cannot change much until a second source covers the GRIN photos:
+ICRISAT passport races (Genesys login) or a specialist's blind check.
+
 ### Race model plan (T4, #24)
 
 Trained and scored once on test as race-v1 (T9, #32); results below. The plan as followed:

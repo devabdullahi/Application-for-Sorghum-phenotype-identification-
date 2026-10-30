@@ -1,0 +1,36 @@
+Basic-race training labels (T32, #62): confirmed-label rule of ADR-0013 / type-eval-v1 5.2
+  splits read: train, validation; test accessions not read: 1347
+  minimum confirmed training accessions per race: 20
+
+train: accessions (photos) per GRIN basic race
+  race            labelled   corroborated    repeated     confirmed   second-source-disagrees        single-observation   conflicting, names it
+  Bicolor        112 (114)          0 (0)       3 (3)         3 (3)                     0 (0)                 109 (111)                   3 (4)
+  Caudatum     1568 (1595)          8 (8)     13 (13)       21 (21)                     2 (2)               1545 (1572)                 19 (23)
+  Durra          863 (940)          0 (0)     27 (27)       27 (27)                     0 (0)                 836 (913)                 30 (31)
+  Guinea         153 (153)          0 (0)       1 (1)         1 (1)                     0 (0)                 152 (152)                   2 (2)
+  Kafir          126 (128)          0 (0)       0 (0)         0 (0)                     0 (0)                 126 (128)                 15 (15)
+  all          2822 (2930)          8 (8)     44 (44)       52 (52)                     2 (2)               2768 (2876)                 61 (66)
+  not a basic-race label, accessions (photos):
+    intermediate-race            1669 (1737)
+    conflicting-observations         63 (68)
+    no-scored-race               1697 (1820)
+
+validation: accessions (photos) per GRIN basic race
+  race            labelled   corroborated    repeated     confirmed   second-source-disagrees        single-observation   conflicting, names it
+  Bicolor          21 (21)          0 (0)       0 (0)         0 (0)                     0 (0)                   21 (21)                   3 (6)
+  Caudatum       342 (350)          1 (1)       6 (6)         7 (7)                     0 (0)                 335 (343)                  9 (12)
+  Durra          197 (224)          0 (0)       8 (8)         8 (8)                     0 (0)                 189 (216)                   5 (6)
+  Guinea           25 (25)          0 (0)       0 (0)         0 (0)                     0 (0)                   25 (25)                   1 (1)
+  Kafir            25 (25)          0 (0)       0 (0)         0 (0)                     0 (0)                   25 (25)                   5 (5)
+  all            610 (645)          1 (1)     14 (14)       15 (15)                     0 (0)                 595 (630)                 19 (23)
+  not a basic-race label, accessions (photos):
+    intermediate-race              365 (377)
+    conflicting-observations         22 (26)
+    no-scored-race                 370 (396)
+
+Fallback ON: too few confirmed training accessions for Bicolor, Guinea, Kafir.
+  Strict confirmed-only training would drop these races, so they are not refilled; instead
+  every race is weighted the same way: confirmed 1.0, single-observation 0.79, contradicted / conflicting / intermediate 0.
+  The single-observation weight is the crosswalk's basic-race agreement, 23/29 = 0.79 [0.62, 0.90] (T24): the share of one-curator labels a second source confirms.
+  train: 2820 (2928) accessions (photos) with weight > 0, 2768 (2876) of them kept by the fallback; weighted photos 2324.0
+  validation (scored, not trained): 15 (15) confirmed accessions (photos): Bicolor 0, Caudatum 7, Durra 8, Guinea 0, Kafir 0

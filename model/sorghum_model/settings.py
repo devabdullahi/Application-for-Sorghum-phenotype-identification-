@@ -373,6 +373,34 @@ class CoreShortlistSettings:
 
 
 @dataclass(frozen=True)
+class RaceLabelCleaningSettings:
+    """When basic-race training falls back from confirmed labels only, and how it weights then
+    (`race_label_cleaning`, T32 #62).
+
+    Attributes:
+        min_confirmed_train_accessions_per_race: a race with fewer confirmed training accessions
+            cannot be trained on confirmed labels alone, and switches the manifest to the
+            weighting fallback. 20 matches `RaceTrainingSettings.min_train_photos_per_race`:
+            below it a race's head row is fitted to a handful of accessions. Initial guess.
+        single_observation_weight: loss weight of a single-observation label under the
+            fallback (confirmed labels weigh 1). 0.79 is the crosswalk's agreement where GRIN
+            and Frontiers both name a basic race (23 of 29, Wilson 95% [0.62, 0.90], T24): the
+            estimated share of one-curator labels that are right. Weighting by that share keeps
+            every race but lets a confirmed label count a little more. Initial guess; it rests
+            on 29 accessions.
+    """
+
+    min_confirmed_train_accessions_per_race: int = 20
+    single_observation_weight: float = 0.79
+
+    def __post_init__(self) -> None:
+        if self.min_confirmed_train_accessions_per_race < 1:
+            raise ValueError("min_confirmed_train_accessions_per_race must be at least 1")
+        if not 0 < self.single_observation_weight <= 1:
+            raise ValueError("single_observation_weight must be in (0, 1]")
+
+
+@dataclass(frozen=True)
 class RaceEvaluationSettings:
     """When the race model returns a group of races, and when it answers "unrecognized".
 
