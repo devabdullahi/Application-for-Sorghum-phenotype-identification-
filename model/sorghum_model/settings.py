@@ -8,8 +8,8 @@ must be tuned once real data is in.
 from dataclasses import dataclass
 from enum import StrEnum
 
-# MobileNetV3-Small's ImageNet weights were trained at 224 px. Matching it keeps the
-# pretrained features useful, and it is the size `shared/` resizes to before `ImageModel`.
+# The backbones' ImageNet weights were trained at 224 px. Matching it keeps the pretrained
+# features useful, and it is the size `shared/` resizes to before `ImageModel`.
 MODEL_INPUT_SIZE_PX = 224
 
 
@@ -54,7 +54,10 @@ class SplitSettings:
 
 
 class Backbone(StrEnum):
-    """Keras MobileNetV3-Small variants; the value is written to traits-vN.json `backbone`."""
+    """Keras ImageNet backbones; the value is written to traits-vN.json `backbone`."""
+
+    MOBILENET_V2 = "MobileNetV2 1.0"
+    """Width 1.0. ReLU6 activations, no squeeze-and-excitation."""
 
     MOBILENET_V3_SMALL = "MobileNetV3-Small"
     """Hard-swish activations and squeeze-and-excitation blocks."""
@@ -82,13 +85,23 @@ class TrainingSettings:
             a handful of photos gives a head that is confidently wrong. Initial guess.
         min_evaluation_images_per_class: per validation and test split. Below this the
             temperature, threshold and accuracy for that class are noise.
-        backbone: the MobileNetV3-Small variant. Minimalistic, because the full variant lost
-            14 accuracy points to INT8 on the first real run (diag-1, 2026-10-23: float 0.867,
-            INT8 0.727), and a class-balanced representative set made it worse (0.187), so
-            the loss comes from the architecture (hard-swish and squeeze-and-excitation
-            quantize poorly), not from calibration data. Minimalistic gives up some ImageNet
-            accuracy for a model that quantizes closely. Input size and output layout are
-            the same for both, so the metadata contract does not change.
+        backbone: the ImageNet backbone. MobileNetV2 1.0, because the Keras MobileNetV3-Small
+            weights lose about 10 accuracy points to full-integer quantization before any
+            fine-tuning: with the backbone frozen and only a linear head trained on our photos
+            (2026-10-29, TF 2.17 converter), MobileNetV3-Small minimalistic scored float 0.764
+            and INT8 0.662 on validation, MobileNetV2 1.0 float 0.793 and INT8 0.792. The full
+            MobileNetV3-Small variant was worse still (diag-1: float 0.867, INT8 0.727).
+            MobileNetV2 costs about 5x the compute of MobileNetV3-Small, which an iPhone runs
+            in a few milliseconds. Input size and output layout are the same for all
+            backbones, so the metadata contract does not change.
+        first_fine_tuned_layer: name of the first backbone layer that trains in the fine-tune
+            phase; the layers before it keep their ImageNet weights, or None to fine-tune the
+            whole backbone. "block_12_expand" leaves MobileNetV2's last five blocks (of 17)
+            and its final 1x1 convolution trainable: the early layers hold generic edges and
+            textures, and freezing them keeps their activation ranges as ImageNet left them,
+            which INT8 depends on. It also makes a fine-tune step about 4x faster on this CPU
+            (0.38 s against 1.55 s per batch of 32). Initial guess. The name must exist in the
+            chosen backbone; training refuses otherwise.
     """
 
     batch_size: int = 32
@@ -99,7 +112,8 @@ class TrainingSettings:
     dropout: float = 0.2
     min_train_images_per_class: int = 50
     min_evaluation_images_per_class: int = 10
-    backbone: Backbone = Backbone.MOBILENET_V3_SMALL_MINIMALISTIC
+    backbone: Backbone = Backbone.MOBILENET_V2
+    first_fine_tuned_layer: str | None = "block_12_expand"
 
     def __post_init__(self) -> None:
         if self.batch_size < 1:
@@ -112,6 +126,8 @@ class TrainingSettings:
             raise ValueError("dropout must be in [0, 1)")
         if self.min_train_images_per_class < 1 or self.min_evaluation_images_per_class < 1:
             raise ValueError("minimum images per class must be at least 1")
+        if self.first_fine_tuned_layer == "":
+            raise ValueError("first_fine_tuned_layer must be a layer name or None")
         # Frozen dataclass: accept the enum's value (e.g. from a training report) too.
         object.__setattr__(self, "backbone", Backbone(self.backbone))
 
@@ -125,10 +141,16 @@ class ExportSettings:
             A few hundred covers the activation range; more only slows conversion.
         ece_bins: equal-width confidence bins for expected calibration error; 15 is the
             common choice in the calibration literature.
-        sorghum_precision_target: the threshold on P(sorghum) is the lowest one whose
-            validation precision reaches this value. A non-sorghum sample that passes the gate
-            gets a confident wrong cultivar, which is worse than a retake, so precision is
-            favoured over recall. Initial guess, tune on field photos.
+        min_sorghum_precision: the threshold on P(sorghum) is the one with the best
+            validation decision accuracy among those whose validation precision reaches this
+            value. A non-sorghum sample that passes the gate gets a confident wrong cultivar,
+            which is worse than a retake, so precision has a floor. The floor was 0.97 until
+            2026-10-29, when the threshold rule changed from "lowest threshold that reaches the
+            target" to "most accurate threshold that reaches the floor": at 0.97 the gate
+            stopped too many real sorghum photos for the 90% decision-accuracy bar (validation
+            recall at 0.97: diag-1 0.30, v2-1 INT8 0.59). 0.95 still
+            lets at most one passed photo in twenty be a non-sorghum one. Chosen on
+            validation numbers only. ASSUMPTION - confirm; tune on field photos.
         min_threshold_predictions: a threshold supported by fewer validation predictions than
             this is rejected as noise.
         fixture_images: test-split photos exported with expected outputs for the parity tests
@@ -137,6 +159,10 @@ class ExportSettings:
             decision the app makes with the exported threshold. The gate is the first step of
             every identification; below 90% one sample in ten is wrongly stopped or wrongly
             passed on, which the team agreed is too many to ship (review of PR #11).
+        converter_tensorflow_version: ship bar. The TensorFlow major.minor version that must
+            convert the model. The iPhone runtime is TensorFlowLiteSwift 2.17.0, and a model
+            converted with TF 2.20 gave logits 3-12 output steps away from iOS's on the parity
+            fixtures (2026-10-23), so export runs in the `export` environment (TF 2.17).
         max_quantization_accuracy_delta: ship bar. Largest allowed |float - INT8| top-1
             accuracy difference on the test split. The phones run the INT8 model, so a larger
             loss means the numbers measured on the float model do not describe the app.
@@ -145,25 +171,29 @@ class ExportSettings:
 
     representative_images: int = 300
     ece_bins: int = 15
-    sorghum_precision_target: float = 0.97
+    min_sorghum_precision: float = 0.95
     min_threshold_predictions: int = 20
     fixture_images: int = 12
     min_sorghum_accuracy: float = 0.90
     max_quantization_accuracy_delta: float = 0.02
+    converter_tensorflow_version: str = "2.17"
 
     def __post_init__(self) -> None:
         if self.representative_images < 1:
             raise ValueError("representative_images must be at least 1")
         if self.ece_bins < 2:
             raise ValueError("ece_bins must be at least 2")
-        if not 0.5 < self.sorghum_precision_target < 1:
-            raise ValueError("sorghum_precision_target must be in (0.5, 1)")
+        if not 0.5 < self.min_sorghum_precision < 1:
+            raise ValueError("min_sorghum_precision must be in (0.5, 1)")
         if self.min_threshold_predictions < 1 or self.fixture_images < 1:
             raise ValueError("min_threshold_predictions and fixture_images must be at least 1")
         if not 0.5 < self.min_sorghum_accuracy <= 1:
             raise ValueError("min_sorghum_accuracy must be in (0.5, 1]")
         if not 0 <= self.max_quantization_accuracy_delta < 0.5:
             raise ValueError("max_quantization_accuracy_delta must be in [0, 0.5)")
+        major_minor = self.converter_tensorflow_version.split(".")
+        if len(major_minor) != 2 or not all(part.isdigit() for part in major_minor):
+            raise ValueError("converter_tensorflow_version must look like '2.17'")
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,6 @@
-# `model/`: species head training (MobileNetV3-Small)
+# `model/`: species head training (MobileNetV2)
 
-This package builds the on-device image model: a MobileNetV3-Small backbone with a
+This package builds the on-device image model: a MobileNetV2 1.0 backbone with a
 **species head** that answers "is this sorghum?" before any cultivar matching
 ([ADR-0006](../docs/architecture/adr/0006-species-gate-before-cultivar.md)). Learned trait
 heads come later and share the same backbone and file
@@ -66,11 +66,25 @@ tool downloads photos.
   because their hashes barely differ): same-class copies put their groups together into one
   group, copies with different labels are both dropped (listed as `excluded` in the split
   manifest).
-- **Ship bar** (`ExportSettings`): held-out sorghum-vs-not accuracy >= 0.90 and
-  |float - INT8| accuracy <= 0.02. `export` refuses (exit 1, nothing written) below the bar,
-  unless `--allow-below-bar`, which is for diagnostic exports only and sets `belowBar: true`
-  in the metadata.
-- **Framework:** TensorFlow/Keras, for its built-in INT8 TFLite converter.
+- **Ship bar** (`ExportSettings`): held-out sorghum-vs-not accuracy >= 0.90,
+  |float - INT8| accuracy <= 0.02, a model that loads under XNNPACK, and conversion with
+  TensorFlow 2.17 (the iPhone runs TensorFlowLiteSwift 2.17.0; a TF 2.20 conversion failed
+  the iOS parity test on 2026-10-23). `export` refuses (exit 1, nothing written) below the
+  bar, unless `--allow-below-bar`, which is for diagnostic exports only and sets
+  `belowBar: true` in the metadata.
+- **Backbone** (2026-10-29): MobileNetV2 1.0 (ImageNet weights), fine-tuned from
+  `block_12_expand` on (`TrainingSettings`). The Keras MobileNetV3-Small weights lose about
+  10 points to full-integer quantization before any fine-tuning: frozen backbone plus a
+  linear head on 6,000 of our training photos scored, on 1,200 validation photos, float
+  0.764 / INT8 0.662 for MobileNetV3-Small minimalistic and 0.793 / 0.792 for MobileNetV2
+  1.0. Weight-only INT8 kept 97% top-1 agreement, so the loss is in the activations.
+- **Sorghum threshold** (2026-10-29): the most accurate threshold on validation among those
+  with at least 95% validation sorghum precision (`ExportSettings.min_sorghum_precision`).
+  It replaced "the lowest threshold with 97% precision", which stopped too many real sorghum
+  photos for the accuracy bar. **ASSUMPTION — confirm** the 95% floor.
+- **Framework:** TensorFlow/Keras, for its built-in INT8 TFLite converter. Training runs on
+  TensorFlow 2.20 (`train` extra) and export on 2.17 (`export` extra); Keras is 3.15.1 in
+  both, so the checkpoint loads the same way.
 
 ## Photo sources
 
@@ -150,7 +164,8 @@ Needs [uv](https://docs.astral.sh/uv/). TensorFlow needs Python 3.11 or 3.12.
 ```sh
 cd model
 uv sync --python 3.12                 # data tools and tests (small)
-uv sync --python 3.12 --extra train   # adds TensorFlow (~1.5 GB) for train/export
+uv sync --python 3.12 --extra train   # adds TensorFlow 2.20 (~1.5 GB) for train
+uv sync --python 3.12 --extra export  # TensorFlow 2.17 for export (a separate environment)
 uv sync --python 3.12 --extra review  # adds PyTorch + open_clip for review-labels
 uv run pytest
 ```
@@ -191,11 +206,15 @@ uv run sorghum-model review-labels
 #    labels only; near-duplicates across sources are merged into one group or dropped.
 uv run sorghum-model split
 
-# 4. Train: frozen backbone, then fine-tune; keeps the best validation loss.
+# 4. Train: frozen backbone, then fine-tune; keeps the best validation loss. Every epoch is
+#    logged to <run-dir>/history.csv with its weights; after a crash, add --resume to
+#    continue from the last finished epoch. Decoded 224 px inputs are cached in
+#    <run-dir>/input-cache (about 5 GB), so only the first epoch reads the photos.
 uv run sorghum-model train --run-dir runs/species-v1
 
 # 5. Quantize, check parity, calibrate, then write the model, metadata and fixtures.
-uv run sorghum-model export --run-dir runs/species-v1 --version 1 \
+#    Run it in the `export` environment (TensorFlow 2.17); export refuses any other version.
+uv run --extra export sorghum-model export --run-dir runs/species-v1 --version 1 \
     --out-dir runs/species-v1/export \
     --fixtures-dir ../shared/src/commonTest/resources/species
 ```
@@ -222,7 +241,8 @@ uv run sorghum-model export --run-dir runs/species-v1 --version 1 \
 | `quantization.py` | Round-half-up input quantization and the logit step for parity fixtures |
 | `preprocessing.py` | EXIF upright, centre square crop, bilinear resize to 224 px |
 | `settings.py` | Every tunable value, with its reason and range checks |
-| `train.py` | Keras MobileNetV3-Small, class-balanced weights, light augmentation |
+| `train.py` | Keras MobileNetV2, class-balanced weights, light augmentation, input cache, resume |
+| `training_history.py` | Per-epoch history that `train --resume` continues from |
 | `export.py` | INT8 conversion, float-vs-INT8 parity, temperature, threshold, fixtures |
 | `calibration.py` | Temperature fit, ECE, sorghum threshold choice |
 | `metadata.py` | Builds and validates `traits-vN.json` |
@@ -232,7 +252,7 @@ uv run sorghum-model export --run-dir runs/species-v1 --version 1 \
 - **Input:** 224 x 224 RGB, uint8. `shared/` crops the centred square, resizes bilinearly,
   then quantizes each 0-255 value with `q = v / scale + zeroPoint`, rounding half up
   (Kotlin `roundToInt`; Python matches with `floor(x + 0.5)`), taking both from
-  `input.quantization` in the JSON. MobileNetV3's own normalization is inside the model.
+  `input.quantization` in the JSON. The backbone's own normalization is inside the model.
 - **Fixtures:** `expected.json` has a top-level `logitStep`, the quantization step of the
   species logits (scale of the int8 tensor feeding the final DEQUANTIZE, or of an int8
   output). It is always present, because the iOS parity test checks each logit within
@@ -242,8 +262,8 @@ uv run sorghum-model export --run-dir runs/species-v1 --version 1 \
 - **Output:** one float logits vector per head. Species logits follow the class order in
   `heads.species.classes`.
 - **Decision:** `shared/species` applies `softmax(logits / temperature)` and continues only
-  when P(sorghum) >= `sorghumThreshold`. The threshold is the lowest one that reaches 97%
-  sorghum precision on validation (`ExportSettings`, an initial guess).
+  when P(sorghum) >= `sorghumThreshold`. The threshold is the most accurate one on
+  validation with at least 95% sorghum precision (`ExportSettings`, an assumption).
 
 ### ML hygiene this code enforces
 

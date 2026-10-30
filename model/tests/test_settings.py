@@ -19,7 +19,10 @@ def test_defaults_are_valid():
         lambda: SplitSettings(salt=""),
         lambda: TrainingSettings(fine_tune_learning_rate=1e-2, head_learning_rate=1e-3),
         lambda: TrainingSettings(dropout=1.0),
-        lambda: ExportSettings(sorghum_precision_target=1.0),
+        lambda: ExportSettings(min_sorghum_precision=1.0),
+        lambda: ExportSettings(converter_tensorflow_version="2.17.1"),
+        lambda: ExportSettings(converter_tensorflow_version="latest"),
+        lambda: TrainingSettings(first_fine_tuned_layer=""),
         lambda: ExportSettings(ece_bins=1),
         lambda: PublicDatasetSettings(images_per_sequence_group=0),
         lambda: PublicDatasetSettings(grain_images_per_class=0),
@@ -30,10 +33,11 @@ def test_rejects_out_of_range_values(build):
         build()
 
 
-def test_backbone_defaults_to_the_quantization_friendly_variant():
+def test_backbone_defaults_to_the_one_that_quantizes_closely():
     from sorghum_model.settings import Backbone, TrainingSettings
 
-    assert TrainingSettings().backbone is Backbone.MOBILENET_V3_SMALL_MINIMALISTIC
+    assert TrainingSettings().backbone is Backbone.MOBILENET_V2
+    assert TrainingSettings(first_fine_tuned_layer=None).first_fine_tuned_layer is None
     # A training report stores the value; reading it back gives the enum.
     assert TrainingSettings(backbone="MobileNetV3-Small").backbone is Backbone.MOBILENET_V3_SMALL
 
