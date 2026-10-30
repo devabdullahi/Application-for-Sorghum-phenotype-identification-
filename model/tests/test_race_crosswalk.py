@@ -300,3 +300,18 @@ def test_wilson_interval_stays_inside_zero_and_one():
     low, high = wilson_interval(9, 12)
     assert low == pytest.approx(0.4677, abs=1e-3) and high == pytest.approx(0.9111, abs=1e-3)
     assert wilson_interval(0, 0) == (0.0, 1.0)
+
+
+def test_a_pi_number_opens_only_the_hit_with_that_accession_number():
+    fetch, requested = fetcher(
+        {
+            search_url("PI 152636"): search_page(
+                ("1", "PI 152636", "", "Sorghum bicolor"), ("2", "PI 152637", "IS 152636x", "Sorghum bicolor")
+            ),
+            detail_url("1"): detail_page("PI 152636"),
+        }
+    )
+    resolution = resolve_genebank_number("PI 152636", fetch, max_candidates=10)
+    assert resolution.status is IdentityStatus.MATCHED
+    assert resolution.reason == "PI 152636 is its accession number on GRIN PI 152636"
+    assert detail_url("2") not in requested

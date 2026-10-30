@@ -39,6 +39,7 @@ from sorghum_model.frontiers_races import FRONTIERS_SOURCE, FrontiersSample
 from sorghum_model.grin_accessions import (
     AccessionDetail,
     detail_url,
+    normalized_number,
     parse_accession_detail,
     parse_search_results,
     search_url,
@@ -46,6 +47,10 @@ from sorghum_model.grin_accessions import (
 
 # The five basic races (Harlan & de Wet 1972), in the order the product goal names them.
 BASIC_RACES: tuple[str, ...] = ("Bicolor", "Guinea", "Caudatum", "Kafir", "Durra")
+
+# GRIN's plant introduction numbers; the other Frontiers numbers (IS, NSL) belong to other
+# genebanks and are only listed on the GRIN accession.
+GRIN_ACCESSION_PREFIX = "PI "
 
 GENESYS_NOT_FETCHED = "not fetched: Genesys API needs a bearer token (HTTP 401, 2026-10-30)"
 
@@ -150,11 +155,15 @@ def resolve_genebank_number(
 
     Every sorghum hit of GRIN's search (up to `max_candidates`, in GRIN's order) is opened and
     checked, so two accessions listing the same number are reported as ambiguous rather than
-    the first one being taken.
+    the first one being taken. For a PI number only the hit with that accession number is
+    opened, because the fuzzy search also returns other PIs that share its digits.
     """
     if not number:
         return IdentityResolution(IdentityStatus.FAILED, "name is not a genebank number (PI, NSL or IS)")
     hits = [hit for hit in parse_search_results(fetch_page(search_url(number))) if hit.is_sorghum]
+    if number.startswith(GRIN_ACCESSION_PREFIX):
+        # A PI number is GRIN's own accession number, so only the hit with that number can be it.
+        hits = [hit for hit in hits if normalized_number(hit.accession) == normalized_number(number)]
     listing = []
     for hit in hits[:max_candidates]:
         detail = parse_accession_detail(fetch_page(detail_url(hit.detail_id)))
