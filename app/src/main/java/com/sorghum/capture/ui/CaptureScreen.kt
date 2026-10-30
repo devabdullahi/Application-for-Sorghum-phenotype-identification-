@@ -10,6 +10,7 @@ import androidx.annotation.StringRes
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -36,6 +39,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -58,8 +62,8 @@ import kotlin.math.roundToInt
 private const val TAG = "CaptureScreen"
 
 /**
- * The whole app UI. Deliberately minimal for phase 1: live preview with a frame outline and a
- * one-line instruction, then either the accepted photo or the rejection reason.
+ * The Capture tab: live preview with a frame outline and a fixed instruction, then either the
+ * accepted photo with its species result or the rejection reason.
  */
 @Composable
 fun CaptureApp(viewModel: CaptureViewModel = viewModel()) {
@@ -89,23 +93,23 @@ fun CaptureApp(viewModel: CaptureViewModel = viewModel()) {
     val currentState = state
     // One branch for both states so the camera is not restarted while the photo is checked.
     if (currentState is CaptureUiState.Guiding || currentState is CaptureUiState.CheckingPhoto) {
-        val message = if (currentState is CaptureUiState.Guiding) {
-            guidanceMessage(currentState.guidance)
-        } else {
-            R.string.checking_photo
-        }
-        CameraPreview(viewModel, guidance = (currentState as? CaptureUiState.Guiding)?.guidance, message = message)
+        CameraPreview(
+            viewModel,
+            guidance = (currentState as? CaptureUiState.Guiding)?.guidance,
+            isCheckingPhoto = currentState is CaptureUiState.CheckingPhoto,
+        )
     } else {
         ResultView(currentState, onRetake = viewModel::retake)
     }
 }
 
-/** Camera preview, target frame outline, and the current instruction. */
+/**
+ * Camera preview, target frame outline and one fixed instruction. Live guidance (level, hold)
+ * still drives auto-capture, but is shown only through the outline turning green.
+ */
 @Composable
-private fun CameraPreview(viewModel: CaptureViewModel, guidance: GuidanceState?, @StringRes message: Int) {
+private fun CameraPreview(viewModel: CaptureViewModel, guidance: GuidanceState?, isCheckingPhoto: Boolean) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val scope = rememberCoroutineScope()
     val camera = remember { CameraSession(context) }
     DisposableEffect(camera) { onDispose { camera.close() } }
 
@@ -125,7 +129,38 @@ private fun CameraPreview(viewModel: CaptureViewModel, guidance: GuidanceState?,
         if (guidance == GuidanceState.READY) viewModel.captureAndCheckPhoto(camera)
     }
 
-    Box(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize()) {
+        // Above the preview, not over it, so it never hides the top of the target frame.
+        Text(
+            text = stringResource(R.string.capture_instruction),
+            color = Color.White,
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.Black)
+                .safeDrawingPadding()
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+        )
+        CameraViewfinder(viewModel, camera, guidance, isCheckingPhoto, Modifier.weight(1f))
+    }
+}
+
+/**
+ * Preview with the target frame outline. The [PreviewView] and the outline share this box, so
+ * the outline matches the region that is analysed and cropped.
+ */
+@Composable
+private fun CameraViewfinder(
+    viewModel: CaptureViewModel,
+    camera: CameraSession,
+    guidance: GuidanceState?,
+    isCheckingPhoto: Boolean,
+    modifier: Modifier,
+) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
+    Box(modifier.fillMaxWidth()) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { viewContext ->
@@ -168,14 +203,9 @@ private fun CameraPreview(viewModel: CaptureViewModel, guidance: GuidanceState?,
             )
         }
 
-        Text(
-            text = stringResource(message),
-            color = Color.White,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .safeDrawingPadding()
-                .padding(24.dp),
-        )
+        if (isCheckingPhoto) {
+            CircularProgressIndicator(color = Color.White, modifier = Modifier.align(Alignment.Center))
+        }
     }
 }
 
@@ -183,15 +213,17 @@ private fun CameraPreview(viewModel: CaptureViewModel, guidance: GuidanceState?,
 @Composable
 private fun ResultView(state: CaptureUiState, onRetake: () -> Unit) {
     if (state is CaptureUiState.PhotoAccepted) {
+        val verdict = speciesVerdict(state.species)
         Column(
             modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(stringResource(R.string.photo_accepted))
+            Text(verdict.title, color = verdict.color, style = MaterialTheme.typography.titleMedium)
+            Text(verdict.detail)
             Image(
                 bitmap = state.photo.asImageBitmap(),
-                contentDescription = stringResource(R.string.photo_accepted),
+                contentDescription = verdict.title,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             )
             Button(onClick = onRetake) { Text(stringResource(R.string.retake)) }
@@ -219,19 +251,6 @@ private fun MessageWithButton(message: String, buttonLabel: String, onClick: () 
         Text(message)
         Button(onClick = onClick) { Text(buttonLabel) }
     }
-}
-
-@StringRes
-private fun guidanceMessage(guidance: GuidanceState?): Int = when (guidance) {
-    null -> R.string.guidance_starting
-    GuidanceState.TILT_TOP_DOWN -> R.string.guidance_tilt_top_down
-    GuidanceState.TILT_BOTTOM_DOWN -> R.string.guidance_tilt_bottom_down
-    GuidanceState.TILT_LEFT_DOWN -> R.string.guidance_tilt_left_down
-    GuidanceState.TILT_RIGHT_DOWN -> R.string.guidance_tilt_right_down
-    GuidanceState.NO_SAMPLE -> R.string.guidance_no_sample
-    GuidanceState.SAMPLE_CUT_OFF -> R.string.guidance_sample_cut_off
-    GuidanceState.HOLD_STEADY -> R.string.guidance_hold_steady
-    GuidanceState.READY -> R.string.guidance_ready
 }
 
 @StringRes

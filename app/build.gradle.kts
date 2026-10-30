@@ -32,6 +32,10 @@ android {
     buildFeatures {
         compose = true
     }
+    androidResources {
+        // The species model is memory-mapped straight from the APK, which needs it stored uncompressed.
+        noCompress += "tflite"
+    }
     kotlinOptions {
         jvmTarget = "11"
     }
@@ -59,6 +63,9 @@ dependencies {
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
+
+    // On-device model runner for the species model (ADR-0010). Runs locally; no network code.
+    implementation(libs.litert)
 
     // Adapter-side pure code (e.g. pixel conversion) is tested on the JVM.
     testImplementation(libs.junit)

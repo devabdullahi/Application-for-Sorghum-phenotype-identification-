@@ -8,6 +8,9 @@ activityCompose = "1.12.3"
 composeBom = "2026.06.01"
 camerax = "1.6.2"
 junit = "4.13.2"
+# LiteRT 1.4.x, not 2.x: 2.x pulls in Play AI delivery (Play services, asset download) and
+# FOREGROUND_SERVICE permissions, which an offline app must not ship. See ADR-0010.
+litert = "1.4.2"
 kotlinxSerialization = "1.9.0"
 
 [libraries]
@@ -24,6 +27,7 @@ androidx-camera-core = { group = "androidx.camera", name = "camera-core", versio
 androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
 androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
 androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
+litert = { group = "com.google.ai.edge.litert", name = "litert", version.ref = "litert" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 kotlin-test = { group = "org.jetbrains.kotlin", name = "kotlin-test", version.ref = "kotlin" }

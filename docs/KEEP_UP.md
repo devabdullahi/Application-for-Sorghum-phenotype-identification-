@@ -36,14 +36,14 @@ is a bug.
 
 | File | What it does | Has logic? |
 |---|---|---|
-| `app/.../MainActivity.kt` | Entry point, camera permission | No |
-| `app/.../ui/CaptureScreen.kt` | Compose UI: preview, target frame overlay, one instruction | No |
-| `app/.../ui/CaptureViewModel.kt` | Thin adapter: forwards events to `CaptureFlow`, maps `CaptureState` to `CaptureUiState`, keeps the accepted `Bitmap` | No (on purpose) |
-| `app/.../camera/CameraSession.kt` | CameraX binding: preview, analysis (RGBA, 640x480, keep-only-latest), still capture | No |
-| `app/.../camera/SampleCoverageAnalyzer.kt` | Per frame: crop to target, at most `LIVE_ANALYSIS_LONG_SIDE_PIXELS` (160, defined in `shared/`), convert, measure green coverage | Calls shared |
-| `app/.../camera/FrameCropper.kt` | Crop `ImageProxy` to the target frame, downscale `Bitmap` | Geometry only |
-| `app/.../camera/PixelImageConversion.kt` | **The one** `Bitmap` (ARGB) to `PixelImage` (RGB) converter, with a 2x2 test | Conversion only |
-| `app/.../camera/TiltSensor.kt` | Gravity sensor (accelerometer fallback) to `DeviceTilt` flow | No |
+| `../app/.../MainActivity.kt` | Entry point, camera permission | No |
+| `../app/.../ui/CaptureScreen.kt` | Compose UI: preview, target frame overlay, one instruction | No |
+| `../app/.../ui/CaptureViewModel.kt` | Thin adapter: forwards events to `CaptureFlow`, maps `CaptureState` to `CaptureUiState`, keeps the accepted `Bitmap` | No (on purpose) |
+| `../app/.../camera/CameraSession.kt` | CameraX binding: preview, analysis (RGBA, 640x480, keep-only-latest), still capture | No |
+| `../app/.../camera/SampleCoverageAnalyzer.kt` | Per frame: crop to target, at most `LIVE_ANALYSIS_LONG_SIDE_PIXELS` (160, defined in `shared/`), convert, measure green coverage | Calls shared |
+| `../app/.../camera/FrameCropper.kt` | Crop `ImageProxy` to the target frame, downscale `Bitmap` | Geometry only |
+| `../app/.../camera/PixelImageConversion.kt` | **The one** `Bitmap` (ARGB) to `PixelImage` (RGB) converter, with a 2x2 test | Conversion only |
+| `../app/.../camera/TiltSensor.kt` | Gravity sensor (accelerometer fallback) to `DeviceTilt` flow | No |
 | `shared/.../session/CaptureFlow.kt` | Capture state machine: guiding, checking, accepted, rejected, failures | Yes |
 | `shared/.../capture/guidance/*` | Tilt to instruction, steady-hold timer (800 ms) | Yes |
 | `shared/.../capture/sample/GreenCoverage.kt` | Excess-green plant detector, used live **and** after capture | Yes |
@@ -56,7 +56,7 @@ Diagrams of these flows: [docs/flows/](flows/README.md), especially 02, 03, 04 a
 
 The full list is in [CLAUDE.md](../CLAUDE.md). These are the ones Android work trips over.
 
-1. **No thresholds or decisions in `app/`.** If a line compares a measurement to a number,
+1. **No thresholds or decisions in `../app/`.** If a line compares a measurement to a number,
    it belongs in `shared/`. ViewModels forward events and render state.
 2. **Images cross into `shared/` only as `PixelImage`**: RGB, row-major, upright, no
    padding. Convert once, in `PixelImageConversion.kt`. A swapped channel or a missed
@@ -67,7 +67,7 @@ The full list is in [CLAUDE.md](../CLAUDE.md). These are the ones Android work t
    closed with `image.use {}`, `STRATEGY_KEEP_ONLY_LATEST`. Never buffer frames.
 5. **Offline:** `INTERNET` and `ACCESS_NETWORK_STATE` are removed in the manifest
    (`tools:node="remove"`), and `allowBackup="false"`. After adding any dependency, check
-   `app/build/intermediates/merged_manifest/` for `INTERNET`.
+   `../app/build/intermediates/merged_manifest/` for `INTERNET`.
 6. **Portrait only.** The tilt maths and frame mapping assume it.
 7. **Logic changes need both suites green**: `./gradlew test :shared:allTests`, plus the iOS
    tests if iOS-visible logic changed.
@@ -99,7 +99,7 @@ In order. Items marked *ready* can start now.
      through LiteRT on Android and compare with `expected.json`.
    - Check the merged manifest after adding LiteRT: still no `INTERNET`.
    - See [flow 06](flows/06-species-gate.mermaid).
-3. **Module rename** `app/` to `androidApp/{ui,platform}` (target layout). It is not
+3. **Module rename** `../app/` to `androidApp/{ui,platform}` (target layout). It is not
    scheduled; do it as its own behaviour-neutral PR.
 
 ## 7. The species model, in short
