@@ -229,8 +229,9 @@ final class SpeciesModelParityTests: XCTestCase {
 }
 
 /// Passes every call to the app's `LiteRTImageModel` and keeps the last outputs, so the test
-/// sees the raw logits of the exact call the species gate made.
-private final class RecordingImageModel: NSObject, ImageModel {
+/// sees the raw logits of the exact call the species gate made. Also used by
+/// `BasicRaceModelParityTests`, which reads another output of the same call.
+final class RecordingImageModel: NSObject, ImageModel {
     private let model: LiteRTImageModel
     /// Outputs of the most recent `run`, as floats; nil before the first call.
     private(set) var lastOutputs: [[Float]]?
