@@ -80,7 +80,7 @@ def parse_study_page(page_html: str) -> list[GrinAccessionImage]:
     Columns are found by their header (ID, ACCESSION, NAME, TAXONOMY, ORIGIN, IMAGE), so a
     reordered table still parses; a page without those headers raises ValueError.
     """
-    parser = _TableParser()
+    parser = StudyTableParser()
     parser.feed(page_html)
     header, *rows = parser.rows
     required = ("ID", "ACCESSION", "NAME", "TAXONOMY", "ORIGIN", "IMAGE")
@@ -147,8 +147,8 @@ def download_study(
         )
 
 
-class _TableParser(html.parser.HTMLParser):
-    """Collects the text and <img> sources of every cell of the page's table rows.
+class StudyTableParser(html.parser.HTMLParser):
+    """Collects the text and <img> sources of every cell of a GRIN study page's table rows.
 
     `rows` holds each row's cell texts (header row first); `images_of_row[id(row)]` holds the
     image sources of each cell of that row.
