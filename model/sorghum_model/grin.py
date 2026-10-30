@@ -5,7 +5,7 @@ centimetre ruler, on a grey board, in eleven plantings (St. Croix, Isabela, Ethi
 Sudan collections, 1993-2012). Each accession of a planting has one image, labelled by its
 accession number (PI or GRIF). These are the only accession-labelled sorghum close-ups found
 that anyone can download without an account (decision note: docs/architecture/adr/
-0010-cultivar-accuracy-target.md).
+0011-cultivar-accuracy-target.md).
 
 The images are listed on the "Image (IMAGE)" descriptor's study pages, which are HTML only
 (no JSON API), so each study page is parsed for its accession rows. Downloads go through

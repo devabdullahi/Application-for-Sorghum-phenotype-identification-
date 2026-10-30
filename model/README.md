@@ -147,7 +147,7 @@ board, soil and hands, the scenes the app actually sees.
 
 Cultivar-labelled photos have their own manifest format (`cultivar_manifest.py`): the label
 is an accession number, not a species class. Survey of sources, metric and plan:
-[ADR-0010](../docs/architecture/adr/0010-cultivar-accuracy-target.md) (draft).
+[ADR-0011](../docs/architecture/adr/0011-cultivar-accuracy-target.md) (draft).
 
 - `grin-download`: GRIN-Global's sorghum seed/panicle photos (USDA-ARS, public domain;
   9,410 images, 8,965 accessions, 11 plantings). Rows go to

@@ -58,7 +58,7 @@ RACE = GrinDescriptor(
         "Guinea-durra": "12", "Kafir-caudatum": "13", "Durra-caudatum": "14",
         "Kafir-durra": "15", "Shattercane": "16", "Unknown": "17",
     },
-    # Race is not a photo trait; it is the "type" label for evaluation (ADR-0010).
+    # Race is not a photo trait; it is the "type" label for evaluation (ADR-0011).
     trait_id="",
     ibpgr_state_of_grin_code={},
 )

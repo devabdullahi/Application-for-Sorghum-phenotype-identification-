@@ -1,4 +1,4 @@
-# ADR-0010: What "89% sorghum type accuracy" means, and how to reach it
+# ADR-0011: What "89% sorghum type accuracy" means, and how to reach it
 
 Status: Draft, **ASSUMPTION — confirm** with the product owner · Date: 2026-10-30
 
@@ -40,4 +40,4 @@ Option 3. A direct cultivar head is not added, now or as an independent Bayes in
 - Domain gap: GRIN is studio light on a grey board, harvested and dry; gantry data is overhead canopy; the app sees phone close-ups with a colour card. Expect lower accuracy on phones until colour correction (ADR-0008) and phone photos exist. Models must not learn the planting (board, light, year) instead of the trait: the accession split keeps that visible.
 - Reaching 89% at type level is plausible from traits (race is defined by panicle and spikelet shape, which are visible). 89% exact-cultivar top-1 is an unproven research goal and should not be promised until a representative, accession-disjoint phone test set supports it.
 - Blockers needing the user: a Kaggle account (Sorghum-100), a Globus account (TERRA-REF seasons 4 and 6), and a request to the Yang 2025 authors. A team-collected phone set of the target cultivars is still needed for the ship test.
-- Second opinion (Codex, 2026-10-30) agreed: no direct head as a Bayes input (double-counted evidence), define the target at race level with group-aware accuracy plus coverage, split by accession and planting, and do not promise exact-cultivar 89% from these data.
+- An independent second review (2026-10-30) agreed: no direct head as a Bayes input (double-counted evidence), define the target at race level with group-aware accuracy plus coverage, split by accession and planting, and do not promise exact-cultivar 89% from these data.
