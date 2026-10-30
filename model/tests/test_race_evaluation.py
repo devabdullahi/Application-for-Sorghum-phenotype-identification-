@@ -299,3 +299,16 @@ def test_planting_check_compares_the_model_with_the_planting_baseline_inside_eac
     assert checks[0].planting_baseline_accuracy == pytest.approx(0.5)
     assert checks[0].gain_over_baseline == pytest.approx(0.5)
     assert checks[1].selective_accuracy == 0.0 and checks[1].planting_baseline_accuracy == 0.0
+
+
+def test_basic_race_photos_are_split_from_intermediates():
+    from sorghum_model.race_photos import RacePhoto, split_basic_and_intermediate
+    from sorghum_model.splits import Split
+
+    photos = [
+        RacePhoto(f"{race}.jpg", race, race, "P", Split.TRAIN, race)
+        for race in ("Durra", "Durra-bicolor", "Kafir", "Guinea-kafir")
+    ]
+    basic, intermediate = split_basic_and_intermediate(photos)
+    assert [p.race for p in basic] == ["Durra", "Kafir"]
+    assert [p.race for p in intermediate] == ["Durra-bicolor", "Guinea-kafir"]

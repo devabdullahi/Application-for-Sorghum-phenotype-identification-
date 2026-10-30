@@ -51,6 +51,11 @@ from sorghum_model.train import SHUFFLE_SEED
 # The second operating point #32 asks to report (the gate's is race_evaluation.GATE_COVERAGE).
 SECOND_COVERAGE = 0.90
 
+# Answer-rule search for the basic-race output (T14, #37): groups of one or two of the five
+# basic races. A group of three names most of the taxonomy, so it is no answer; set before the
+# output was scored.
+BASIC_RACE_RULE_SEARCH = RaceRuleSearchSettings(max_group_sizes=(1, 2))
+
 
 def export_race_model(
     run_dir: Path,
@@ -62,8 +67,16 @@ def export_race_model(
     search: RaceRuleSearchSettings,
     gate: RaceGateSettings,
     provenance: dict,
+    model_name: str = "race",
+    intermediate_photos: Sequence[RacePhoto] = (),
 ) -> dict:
-    """Writes the INT8 model, its evaluation and report; returns the evaluation document."""
+    """Writes the INT8 model, its evaluation and report; returns the evaluation document.
+
+    `model_name` names the files (`<name>-vN.*`): "race" for the fifteen-race output,
+    "basic-race" for the five-basic-race output (T14, #37), whose `intermediate_photos`
+    (validation and test photos of the ten intermediates, never trained on) are answered
+    with the same rule and reported apart from the headline, as `intermediatesTestInt8`.
+    """
     races = race_class_names(photos)
     train, validation, test = (photos_in(photos, split) for split in Split)
     float_model = keras.models.load_model(run_dir / RACE_MODEL_FILE)
@@ -169,13 +182,19 @@ def export_race_model(
         "gate": gate.__dict__ | {"problems": problems, "passed": not problems},
         "provenance": provenance,
     }
+    intermediate_test = [p for p in intermediate_photos if p.split is Split.TEST]
+    if intermediate_test:
+        document["intermediatesTestInt8"] = _intermediate_summary(
+            intermediate_test, softmax(runner.logits(_load_inputs(intermediate_test, data_root)), temperatures["int8"]),
+            races, int8_gate_rule,
+        )
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    model_path = output_dir / f"race-v{version}.tflite"
+    model_path = output_dir / f"{model_name}-v{version}.tflite"
     model_path.write_bytes(model_bytes)
     document["provenance"] = provenance | {"modelFileSha256": sha256_of_file(model_path)}
-    (output_dir / f"race-v{version}.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
-    report = [f"race-v{version}: INT8 on test at the {GATE_COVERAGE:.2f}-coverage rule"]
+    (output_dir / f"{model_name}-v{version}.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    report = [f"{model_name}-v{version}: INT8 on test at the {GATE_COVERAGE:.2f}-coverage rule"]
     report += race_evaluation_report(int8_gate_test, races)
     if SECOND_COVERAGE in gate_evaluations:
         report += [f"INT8 on test at the {SECOND_COVERAGE:.2f}-coverage rule"]
@@ -183,7 +202,7 @@ def export_race_model(
     report += ["majority baseline on test"] + race_evaluation_report(majority, races)[:1]
     report += ["planting baseline on test"] + race_evaluation_report(planting, races)[:1]
     report += ["gate: " + ("passed" if not problems else "; ".join(problems))]
-    (output_dir / f"race-v{version}-report.txt").write_text("\n".join(report) + "\n", encoding="utf-8")
+    (output_dir / f"{model_name}-v{version}-report.txt").write_text("\n".join(report) + "\n", encoding="utf-8")
     return document
 
 
@@ -220,4 +239,26 @@ def _basic_summary(evaluation) -> dict:
         "photos": evaluation.photo_count,
         "coverage": evaluation.coverage,
         "selectiveAccuracy": evaluation.selective_accuracy,
+    }
+
+
+def _intermediate_summary(photos, probabilities, races, rule) -> dict:
+    """How an output over basic races answers intermediate photos: a hit when a parent of the
+    true intermediate is in the returned group (`evaluate_basic_races`). Reported only, never
+    the headline: the output was not trained on intermediates."""
+    overall = evaluate_basic_races([p.race for p in photos], probabilities, races, rule)
+    by_race = {}
+    for race in sorted({p.race for p in photos}):
+        rows = [i for i, p in enumerate(photos) if p.race == race]
+        evaluation = evaluate_basic_races([race] * len(rows), probabilities[rows], races, rule)
+        by_race[race] = {
+            "photos": evaluation.photo_count, "coverage": evaluation.coverage,
+            "parentInGroupSelectiveAccuracy": evaluation.selective_accuracy,
+        }
+    return {
+        "rule": "hit when a parent basic race of the true intermediate is in the returned group",
+        "photos": overall.photo_count,
+        "coverage": overall.coverage,
+        "parentInGroupSelectiveAccuracy": overall.selective_accuracy,
+        "byRace": by_race,
     }
