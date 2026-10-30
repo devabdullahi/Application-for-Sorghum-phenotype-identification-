@@ -150,7 +150,7 @@ is an accession number, not a species class. Survey of sources, metric and plan:
 [ADR-0011](../docs/architecture/adr/0011-cultivar-accuracy-target.md) (draft).
 
 - `grin-download`: GRIN-Global's sorghum seed/panicle photos (USDA-ARS, public domain;
-  9,410 images, 8,965 accessions, 11 plantings). Rows go to
+  9,394 images, 8,965 accessions, 11 plantings; 9,393 downloaded, one is a 404). Rows go to
   `manifests/cultivar-grin.csv`. GRIN's server answers slowly (about 6 s per image), so a
   full run takes most of a day; it is resumable.
 - `grin-descriptors`: GRIN's race and trait observations for every photographed accession,
@@ -185,6 +185,10 @@ model:
 | `not-a-race` | Shattercane (16), Mixed, Breeding line | weedy form, mixed seed lot, pedigree status: not one race |
 | `unmapped-value` | anything else | a value GRIN added later; map it before scoring |
 | `conflicting-observations` | e.g. Durra + Durra-bicolor | plantings disagree; choosing one would be a guess |
+
+Final counts (2026-10-30, `splits/cultivar-grin-v1-summary.txt`): 6,462 accessions / 6,715
+images scored; excluded 2,204 no-race-observation, 6 race-unknown, 197 not-a-race (Mixed
+182, Shattercane 13, Breeding line 2), 95 conflicting-observations, 0 unmapped-value.
 
 Trait-mapping assumptions still to confirm (`grin_descriptors.py`): Straw glume -> IBPGR
 White, Colourless midrib -> White, Lax panicle -> 1 "Very lax".

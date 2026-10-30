@@ -1,0 +1,49 @@
+Images
+  listed on the GRIN study pages: 9394 images of 8965 accessions in 11 plantings
+  manifest rows: 9393 (0 exact repeats dropped)
+  downloaded: 9393 images of 8964 accessions
+  listed but not downloaded: 1 [SORGHUM.IMAGE.ISABELA.2010/1421822]
+  downloaded but not listed: 0 
+
+Descriptors
+  observations: 60987 over 8959 accessions
+  photographed accessions with any observation: 8959 of 8965
+  downloaded accessions with any observation: 8958 of 8964
+  observed but not photographed: 0 
+
+Race labels (downloaded accessions; excluded ones keep their photos for trait heads)
+  scored: 6462 accessions, 6715 images
+  excluded, no-race-observation: 2204 accessions, 2359 images [(none) 2204]
+  excluded, race-unknown: 6 accessions, 6 images [Unknown 6]
+  excluded, not-a-race: 197 accessions, 215 images [Mixed 182, Shattercane 13, Breeding line 2]
+  excluded, unmapped-value: 0 accessions, 0 images
+  excluded, conflicting-observations: 95 accessions, 98 images [Durra-bicolor + Kafir 16, Durra + Durra-bicolor 9, Caudatum + Guinea-durra 7, Durra + Guinea-durra 7, Caudatum + Durra 4, Durra + Kafir-durra 4, Caudatum + Durra-caudatum 4, Bicolor + Caudatum 3, Durra + Durra-caudatum 3, Durra + Mixed 3]
+
+Splits
+               accessions   images  scored acc.  scored img.
+  accession_split
+  train              6251     6546         4491         4665
+  validation         1367     1441          975         1021
+  test               1346     1406          996         1029
+  planting_split
+  train              8964     8964         6462         6462
+  validation            3        3            3            3
+  test                426      426          250          250
+
+Race support (accession_split)
+  race                      train acc/img   validation acc/img         test acc/img
+  Caudatum                      1568/1593              342/350              365/369
+  Durra                           863/940              197/223              181/191
+  Durra-bicolor                   322/352                67/70                68/74
+  Durra-caudatum                  317/328                68/70                63/65
+  Kafir-caudatum                  271/275                67/70                55/57
+  Kafir-durra                     242/253                46/49                52/57
+  Guinea-caudatum                 165/167                37/37                43/43
+  Guinea                          153/153                25/25                39/39
+  Caudatum-bicolor                129/129                28/28                34/34
+  Kafir                           126/128                25/25                22/22
+  Bicolor                         112/114                21/21                24/25
+  Guinea-durra                      80/84                16/16                12/13
+  Guinea-bicolor                    61/65                17/17                17/18
+  Guinea-kafir                      52/53                11/12                14/15
+  Kafir-bicolor                     30/31                  8/8                  7/7
