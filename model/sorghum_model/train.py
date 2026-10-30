@@ -19,7 +19,7 @@ import tensorflow as tf
 from sorghum_model import preprocessing
 from sorghum_model.manifest import ImageRecord
 from sorghum_model.preprocessing import load_model_input
-from sorghum_model.settings import MODEL_INPUT_SIZE_PX, Backbone, TrainingSettings
+from sorghum_model.settings import MODEL_INPUT_SIZE_PX, Backbone, RaceTrainingSettings, TrainingSettings
 from sorghum_model.species_classes import SPECIES_CLASS_NAMES
 from sorghum_model.splits import Split, count_per_class_and_split, find_undersized_classes
 from sorghum_model.training_history import (
@@ -74,13 +74,7 @@ def train_species_model(
             + "\n  ".join(problems)
             + "\nAdd photos (inat-download or import-folder) before training."
         )
-    history_path = run_dir / HISTORY_FILE
-    if history_path.exists() and not resume:
-        raise ValueError(
-            f"{run_dir} already holds a training run; pass --resume to continue it, "
-            "or choose a new --run-dir"
-        )
-
+    refuse_unfinished_run_without_resume(run_dir, resume)
     run_dir.mkdir(parents=True, exist_ok=True)
     keras.utils.set_random_seed(SHUFFLE_SEED)
     train_records = _records_in(records, splits, Split.TRAIN)
@@ -89,17 +83,60 @@ def train_species_model(
         train_records[i] for i in np.random.default_rng(SHUFFLE_SEED).permutation(len(train_records))
     ]
     cache_dir = run_dir / INPUT_CACHE_DIR
-    _remove_stale_cache_locks(cache_dir)
-    train_data = _make_dataset(
-        shuffled_train_records, data_root, settings.batch_size, cache_dir, "train", is_training=True
+    remove_stale_cache_locks(cache_dir)
+    train_data = make_dataset(
+        [data_root / r.image_path for r in shuffled_train_records],
+        class_indices(shuffled_train_records),
+        [r.sha256 for r in shuffled_train_records],
+        settings.batch_size, cache_dir, "train", is_training=True,
     )
-    validation_data = _make_dataset(
-        validation_records, data_root, settings.batch_size, cache_dir, "validation", is_training=False
+    validation_data = make_dataset(
+        [data_root / r.image_path for r in validation_records],
+        class_indices(validation_records),
+        [r.sha256 for r in validation_records],
+        settings.batch_size, cache_dir, "validation", is_training=False,
     )
 
     model, backbone = build_species_model(len(SPECIES_CLASS_NAMES), settings.dropout, settings.backbone)
+    fit_in_two_phases(
+        model, backbone, train_data, validation_data, _balanced_class_weights(train_records),
+        run_dir, KERAS_MODEL_FILE, settings,
+    )
+
+    _write_training_report(
+        run_dir / TRAINING_REPORT_FILE, counts, settings, read_history(run_dir / HISTORY_FILE)
+    )
+    return run_dir
+
+
+def refuse_unfinished_run_without_resume(run_dir: Path, resume: bool) -> None:
+    """Refuses a `run_dir` that already holds a run unless resuming, so two runs with
+    different data or settings are never mixed in one history."""
+    if (run_dir / HISTORY_FILE).exists() and not resume:
+        raise ValueError(
+            f"{run_dir} already holds a training run; pass --resume to continue it, "
+            "or choose a new --run-dir"
+        )
+
+
+def fit_in_two_phases(
+    model: keras.Model,
+    backbone: keras.Model,
+    train_data: tf.data.Dataset,
+    validation_data: tf.data.Dataset,
+    class_weight: dict[int, float] | None,
+    run_dir: Path,
+    model_file: str,
+    settings: "TrainingSettings | RaceTrainingSettings",
+) -> None:
+    """Trains the head on a frozen backbone, then fine-tunes from `first_fine_tuned_layer` on.
+
+    The model with the lowest validation loss is saved as `run_dir / model_file`. Every
+    finished epoch is logged to `history.csv` and its weights saved, so a run that died
+    continues after its last finished epoch (the caller checks `resume`).
+    """
+    history_path = run_dir / HISTORY_FILE
     frozen_in_fine_tune = _layers_before(backbone, settings.first_fine_tuned_layer)
-    class_weight = _balanced_class_weights(train_records)
     total_epochs = settings.head_epochs + settings.fine_tune_epochs
     finished = finished_epoch_count(read_history(history_path))
     last_weights = run_dir / LAST_EPOCH_WEIGHTS_FILE
@@ -110,7 +147,7 @@ def train_species_model(
         # Weights before the log line: an epoch that is logged always has its weights saved.
         return [
             keras.callbacks.ModelCheckpoint(
-                run_dir / KERAS_MODEL_FILE,
+                run_dir / model_file,
                 monitor="val_loss",
                 save_best_only=True,
                 # After a resume, only an epoch better than every earlier one replaces the best.
@@ -153,11 +190,6 @@ def train_species_model(
             class_weight=class_weight,
             callbacks=callbacks(),
         )
-
-    _write_training_report(
-        run_dir / TRAINING_REPORT_FILE, counts, settings, read_history(history_path)
-    )
-    return run_dir
 
 
 def build_species_model(
@@ -235,16 +267,21 @@ def _restore_with_optimizer(model: keras.Model, weights_path: Path) -> None:
     model.load_weights(weights_path)
 
 
-def _make_dataset(
-    records: list[ImageRecord],
-    data_root: Path,
+def make_dataset(
+    paths: list[Path],
+    labels: np.ndarray,
+    sha256s: list[str],
     batch_size: int,
     cache_dir: Path,
     cache_name: str,
     is_training: bool,
 ) -> tf.data.Dataset:
-    paths = [str(data_root / r.image_path) for r in records]
-    labels = class_indices(records)
+    """Batches of (0-255 float pixels, class index), decoded once into a tf.data file cache.
+
+    `sha256s` name the photos (in order) for the cache name. Training batches are shuffled
+    and augmented after the cache, so every epoch sees new augmentations.
+    """
+    path_strings = [str(path) for path in paths]
 
     def load(path: tf.Tensor, label: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
         image = tf.numpy_function(
@@ -255,9 +292,9 @@ def _make_dataset(
 
     cache_dir.mkdir(parents=True, exist_ok=True)
     dataset = (
-        tf.data.Dataset.from_tensor_slices((paths, labels))
+        tf.data.Dataset.from_tensor_slices((path_strings, labels))
         .map(load, num_parallel_calls=tf.data.AUTOTUNE)
-        .cache(str(_input_cache_prefix(cache_dir, cache_name, records)))
+        .cache(str(_input_cache_prefix(cache_dir, cache_name, sha256s)))
     )
     if is_training:
         dataset = dataset.shuffle(SHUFFLE_BUFFER_IMAGES, seed=SHUFFLE_SEED, reshuffle_each_iteration=True)
@@ -269,7 +306,7 @@ def _make_dataset(
     return dataset.prefetch(tf.data.AUTOTUNE)
 
 
-def _input_cache_prefix(cache_dir: Path, name: str, records: list[ImageRecord]) -> Path:
+def _input_cache_prefix(cache_dir: Path, name: str, sha256s: list[str]) -> Path:
     """Names the cache after the photos (in order), the input size and the preprocessing code.
 
     tf.data reads whatever cache file has the given name, so a cache built from other photos or
@@ -278,12 +315,12 @@ def _input_cache_prefix(cache_dir: Path, name: str, records: list[ImageRecord]) 
     digest = hashlib.sha256()
     digest.update(str(MODEL_INPUT_SIZE_PX).encode())
     digest.update(inspect.getsource(preprocessing).encode())
-    for record in records:
-        digest.update(record.sha256.encode())
+    for sha256 in sha256s:
+        digest.update(sha256.encode())
     return cache_dir / f"{name}-{digest.hexdigest()[:16]}"
 
 
-def _remove_stale_cache_locks(cache_dir: Path) -> None:
+def remove_stale_cache_locks(cache_dir: Path) -> None:
     """Deletes lock files left by a killed run. tf.data refuses to write a cache while its
     lock file exists, and only one training job runs per run directory."""
     if cache_dir.exists():

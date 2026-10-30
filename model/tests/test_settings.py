@@ -4,6 +4,7 @@ from sorghum_model.settings import (
     ExportSettings,
     GrinDescriptorSettings,
     PublicDatasetSettings,
+    RaceTrainingSettings,
     SplitSettings,
     TrainingSettings,
 )
@@ -62,3 +63,29 @@ def test_lab_datasets_skip_the_near_duplicate_pass():
         "grainset-maize",
         "sorghum-disease-2024",
     }
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"batch_size": 0},
+        {"head_epochs": 0},
+        {"fine_tune_epochs": -1},
+        {"fine_tune_learning_rate": 2e-3},
+        {"head_learning_rate": 1.0},
+        {"dropout": 1.0},
+        {"first_fine_tuned_layer": ""},
+        {"min_train_photos_per_race": 0},
+        {"min_evaluation_photos_per_race": 0},
+    ],
+)
+def test_race_training_settings_refuse_values_outside_their_range(fields):
+    with pytest.raises(ValueError):
+        RaceTrainingSettings(**fields)
+
+
+def test_race_training_settings_accept_their_range_edges():
+    RaceTrainingSettings(
+        batch_size=1, head_epochs=1, fine_tune_epochs=0, fine_tune_learning_rate=1e-3, dropout=0.0,
+        first_fine_tuned_layer=None, min_train_photos_per_race=1, min_evaluation_photos_per_race=1,
+    )

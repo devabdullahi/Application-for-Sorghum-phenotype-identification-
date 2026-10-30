@@ -74,8 +74,8 @@ def export_model(
 
     float_model = keras.models.load_model(run_dir / KERAS_MODEL_FILE)
     representative = _sample(train, settings.representative_images)
-    model_bytes = _convert_to_int8(float_model, load_images(representative, data_root))
-    runner = _TfliteRunner(model_bytes)
+    model_bytes = convert_to_int8(float_model, load_images(representative, data_root))
+    runner = TfliteRunner(model_bytes)
 
     validation_images = load_images(validation, data_root)
     validation_labels = class_indices(validation)
@@ -236,7 +236,7 @@ def _trained_backbone(run_dir: Path) -> str:
     return str(Backbone.MOBILENET_V3_SMALL)
 
 
-class _TfliteRunner:
+class TfliteRunner:
     """Runs the INT8 model the way the phones do: uint8 pixels in, float logits out."""
 
     def __init__(self, model_bytes: bytes) -> None:
@@ -275,7 +275,7 @@ class _TfliteRunner:
         )
 
 
-def _convert_to_int8(model: keras.Model, representative_images: np.ndarray) -> bytes:
+def convert_to_int8(model: keras.Model, representative_images: np.ndarray) -> bytes:
     """Full-integer post-training quantization with uint8 input and float32 logits output.
 
     The SavedModel is written here, by the TensorFlow that converts it, and not by training:

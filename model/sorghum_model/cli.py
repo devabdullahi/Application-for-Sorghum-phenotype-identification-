@@ -31,6 +31,9 @@ from sorghum_model.settings import (
     GrinDescriptorSettings,
     LabelReviewSettings,
     PublicDatasetSettings,
+    RaceGateSettings,
+    RaceRuleSearchSettings,
+    RaceTrainingSettings,
     SplitSettings,
     TrainingSettings,
 )
@@ -77,6 +80,8 @@ def main(argv: list[str] | None = None) -> int:
     _add_split(commands)
     _add_train(commands)
     _add_export(commands)
+    _add_race_train(commands)
+    _add_race_export(commands)
     arguments = parser.parse_args(argv)
     signal.signal(signal.SIGTERM, exit_on_terminate)
     try:
@@ -784,6 +789,72 @@ def _run_export(arguments) -> None:
         allow_below_bar=arguments.allow_below_bar,
     )
     print(f"exported {metadata_path}")
+
+
+def _add_race_photo_arguments(command) -> None:
+    command.add_argument("--manifest", type=Path, default=DEFAULT_GRIN_MANIFEST)
+    command.add_argument("--splits", type=Path, default=DEFAULT_CULTIVAR_SPLIT)
+    command.add_argument("--data-root", type=Path, default=DEFAULT_CULTIVAR_DATA_ROOT)
+    command.add_argument("--run-dir", type=Path, required=True)
+
+
+def _add_race_train(commands) -> None:
+    command = commands.add_parser(
+        "race-train", help="Train the race head on a species run's backbone (needs the train extra)."
+    )
+    _add_race_photo_arguments(command)
+    command.add_argument(
+        "--starting-model", type=Path, required=True,
+        help="species.keras of the run whose backbone the race head starts from (traits-v2: run v2-3).",
+    )
+    command.add_argument(
+        "--resume", action="store_true",
+        help="Continue the run in --run-dir after its last finished epoch (same data and settings).",
+    )
+    command.set_defaults(run=_run_race_train)
+
+
+def _run_race_train(arguments) -> None:
+    from sorghum_model.race_photos import read_race_photos
+    from sorghum_model.race_training import train_race_model
+
+    photos = read_race_photos(arguments.manifest, arguments.splits)
+    train_race_model(
+        photos, arguments.data_root, arguments.starting_model, arguments.run_dir, RaceTrainingSettings(),
+        resume=arguments.resume,
+    )
+    print(f"trained race model in {arguments.run_dir}")
+
+
+def _add_race_export(commands) -> None:
+    command = commands.add_parser(
+        "race-export",
+        help="Quantize a race run to INT8, choose its answer rules on validation and score it once "
+        "on test against the T9 gate (needs the export extra).",
+    )
+    _add_race_photo_arguments(command)
+    command.add_argument("--version", type=int, required=True, help="Race model version N.")
+    command.add_argument("--out-dir", type=Path, required=True)
+    command.set_defaults(run=_run_race_export)
+
+
+def _run_race_export(arguments) -> None:
+    from sorghum_model.race_export import export_race_model
+    from sorghum_model.race_photos import read_race_photos
+
+    photos = read_race_photos(arguments.manifest, arguments.splits)
+    provenance = {
+        "splitManifestSha256": sha256_of_file(arguments.splits),
+        "imageManifestSha256": sha256_of_file(arguments.manifest),
+        "runDir": str(arguments.run_dir),
+    }
+    document = export_race_model(
+        arguments.run_dir, photos, arguments.data_root, arguments.version, arguments.out_dir,
+        ExportSettings(), RaceRuleSearchSettings(), RaceGateSettings(), provenance,
+    )
+    gate = document["gate"]
+    print(f"exported race-v{arguments.version} to {arguments.out_dir}; gate "
+          + ("passed" if gate["passed"] else "missed: " + "; ".join(gate["problems"])))
 
 
 def _manifest_paths(manifests: list[Path] | None) -> list[Path]:

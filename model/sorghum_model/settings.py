@@ -332,3 +332,134 @@ class RaceEvaluationSettings:
             raise ValueError("group_probability_mass must be in [0.5, 1)")
         if not 1 <= self.max_group_size <= 15:
             raise ValueError("max_group_size must be in [1, 15] (there are fifteen races)")
+
+
+@dataclass(frozen=True)
+class RaceRuleSearchSettings:
+    """How `race_evaluation.choose_answer_rule` searches for the answer rule on validation.
+
+    Attributes:
+        coverage_margin: the chosen rule must reach the target coverage plus this on
+            validation. Coverage on about 1,000 test photos varies by roughly +-0.013 (one
+            standard deviation at 80%) from validation's, so a rule chosen at exactly 0.80
+            would miss the 80% target on test about half the time. 0.02 is an initial guess.
+        min_group_mass, max_group_mass, group_mass_step: the grid of
+            `RaceEvaluationSettings.group_probability_mass` values tried. The range is the
+            setting's own valid range; steps of 0.01 move coverage by well under a point.
+        max_group_sizes: `RaceEvaluationSettings.max_group_size` values tried. At most 3: a
+            basic race with its two closest intermediates is still a useful answer, more
+            names a large part of the fifteen races (ADR-0011).
+    """
+
+    coverage_margin: float = 0.02
+    min_group_mass: float = 0.5
+    max_group_mass: float = 0.99
+    group_mass_step: float = 0.01
+    max_group_sizes: tuple[int, ...] = (1, 2, 3)
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.coverage_margin < 0.1:
+            raise ValueError("coverage_margin must be in [0, 0.1)")
+        if not 0.5 <= self.min_group_mass <= self.max_group_mass < 1:
+            raise ValueError("need 0.5 <= min_group_mass <= max_group_mass < 1")
+        if not 0 < self.group_mass_step <= 0.1:
+            raise ValueError("group_mass_step must be in (0, 0.1]")
+        if not self.max_group_sizes or not all(1 <= size <= 3 for size in self.max_group_sizes):
+            raise ValueError("max_group_sizes must be a non-empty choice from 1, 2 and 3")
+
+    def group_masses(self) -> list[float]:
+        """The grid of group masses, rounded so 0.5 + 0.01 * k does not drift."""
+        count = int(round((self.max_group_mass - self.min_group_mass) / self.group_mass_step)) + 1
+        return [round(self.min_group_mass + index * self.group_mass_step, 6) for index in range(count)]
+
+
+@dataclass(frozen=True)
+class RaceTrainingSettings:
+    """Training schedule for the race head (T9, #32) on the traits-v2 MobileNetV2 backbone.
+
+    Same two phases as `TrainingSettings` (`train.fit_in_two_phases`): the new head first, on
+    the frozen backbone, then fine-tuning from `first_fine_tuned_layer` on with BatchNorm
+    statistics frozen. Same augmentation and the same uint8 224 px input as the species head.
+    Validation numbers behind the defaults are in model/README.md ("Race model results").
+
+    Attributes:
+        batch_size: as `TrainingSettings.batch_size`.
+        head_epochs: frozen-backbone epochs. Ten passes at Adam 1e-3 bring a linear head close
+            to the best validation loss a head on cached frozen features reached. Initial guess.
+        fine_tune_epochs: the best epoch by validation loss (over both phases) is kept.
+            Fine-tuning at 1e-4 with balanced weights overfitted from its first epoch
+            (2026-10-30, validation loss best at epoch 6 of 20), so it is short. Initial guess.
+        head_learning_rate: as `TrainingSettings.head_learning_rate`.
+        fine_tune_learning_rate: 3e-5, a third of the species rate, because 1e-4 overfitted
+            the 4,665 training photos within one epoch. Initial guess.
+        dropout: as `TrainingSettings.dropout`.
+        first_fine_tuned_layer: as `TrainingSettings.first_fine_tuned_layer`; block_12 on
+            keeps the layers INT8 already handles well (ADR-0010) and is the T9 plan.
+        balanced_class_weights: weight races by n / (races * count) in the loss. Off: the gate
+            scores every photo alike, and on validation a balanced head ranked the common
+            races too low (frozen traits-v2 features, 2026-10-30: top-1 0.442 balanced against
+            0.557 unweighted; selective accuracy at ~82% coverage 0.735 against 0.773). Rare
+            races' recall is reported per race either way.
+        min_train_photos_per_race: training refuses a race with fewer training photos. The
+            smallest race, Kafir-bicolor, has 31 (30 accessions); below 20 a race's head row is
+            fitted to a handful of accessions. Initial guess.
+        min_evaluation_photos_per_race: per validation and test split. Kafir-bicolor has 8
+            and 7; a race with fewer than 5 gives a recall that one photo moves by 20 points,
+            so it is refused rather than reported. Initial guess.
+    """
+
+    batch_size: int = 32
+    head_epochs: int = 10
+    fine_tune_epochs: int = 10
+    head_learning_rate: float = 1e-3
+    fine_tune_learning_rate: float = 3e-5
+    dropout: float = 0.2
+    first_fine_tuned_layer: str | None = "block_12_expand"
+    balanced_class_weights: bool = False
+    min_train_photos_per_race: int = 20
+    min_evaluation_photos_per_race: int = 5
+
+    def __post_init__(self) -> None:
+        if self.batch_size < 1:
+            raise ValueError("batch_size must be at least 1")
+        if self.head_epochs < 1 or self.fine_tune_epochs < 0:
+            raise ValueError("head_epochs must be >= 1 and fine_tune_epochs >= 0")
+        if not 0 < self.fine_tune_learning_rate <= self.head_learning_rate < 1:
+            raise ValueError("need 0 < fine_tune_learning_rate <= head_learning_rate < 1")
+        if not 0 <= self.dropout < 1:
+            raise ValueError("dropout must be in [0, 1)")
+        if self.first_fine_tuned_layer == "":
+            raise ValueError("first_fine_tuned_layer must be a layer name or None")
+        if self.min_train_photos_per_race < 1 or self.min_evaluation_photos_per_race < 1:
+            raise ValueError("minimum photos per race must be at least 1")
+
+
+@dataclass(frozen=True)
+class RaceGateSettings:
+    """The T9 (#32) acceptance gate for the race model, checked on the untouched test split.
+
+    Attributes:
+        min_selective_accuracy: group-aware accuracy over answered photos (true race in the
+            returned group). 0.89 is the product target (ADR-0011).
+        min_coverage: the share of test photos that must get an answer at that accuracy. 89%
+            on a fraction of the photos is not 89% (ADR-0011); 0.80 is the team's bar (#32).
+        min_points_over_baseline: the selective accuracy must beat the better of the majority
+            and planting baselines by this much, so the model is not just recognising the
+            commonest race or the planting's board and light. 0.10 is the team's bar (#32).
+        max_int8_accuracy_delta: largest allowed |float - INT8| selective accuracy under the
+            same rule and test protocol; the phones run INT8. Same bar as the species head
+            (`ExportSettings.max_quantization_accuracy_delta`).
+    """
+
+    min_selective_accuracy: float = 0.89
+    min_coverage: float = 0.80
+    min_points_over_baseline: float = 0.10
+    max_int8_accuracy_delta: float = 0.02
+
+    def __post_init__(self) -> None:
+        if not 0 < self.min_selective_accuracy <= 1 or not 0 < self.min_coverage <= 1:
+            raise ValueError("min_selective_accuracy and min_coverage must be in (0, 1]")
+        if not 0 <= self.min_points_over_baseline < 1:
+            raise ValueError("min_points_over_baseline must be in [0, 1)")
+        if not 0 <= self.max_int8_accuracy_delta < 0.5:
+            raise ValueError("max_int8_accuracy_delta must be in [0, 0.5)")
