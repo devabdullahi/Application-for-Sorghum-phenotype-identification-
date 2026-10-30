@@ -93,6 +93,17 @@ def train_race_model(
 def build_race_model(starting_model: Path, race_count: int, dropout: float) -> tuple[keras.Model, keras.Model]:
     """Returns (model, backbone): the starting model's backbone, with its weights, under a new
     race head. Input scaling to [-1, 1] is inside the graph, as in the species model."""
+    inputs, features, backbone = backbone_features(starting_model, dropout)
+    logits = keras.layers.Dense(race_count, name=RACE_HEAD_NAME)(features)
+    return keras.Model(inputs, logits, name="sorghum_race_model"), backbone
+
+
+def backbone_features(starting_model: Path, dropout: float) -> tuple[keras.KerasTensor, keras.KerasTensor, keras.Model]:
+    """(inputs, pooled features after dropout, backbone) of a new graph on the backbone of
+    `starting_model`, with its weights, for new heads (race, traits) to sit on.
+
+    Takes 0-255 RGB like the species model; the scaling to [-1, 1] is inside the graph.
+    """
     species_model = keras.models.load_model(starting_model)
     backbones = [layer for layer in species_model.layers if isinstance(layer, keras.Model)]
     if len(backbones) != 1:
@@ -103,9 +114,7 @@ def build_race_model(starting_model: Path, race_count: int, dropout: float) -> t
     scaled = keras.layers.Rescaling(1 / 127.5, offset=-1, name="to_minus_one_one")(inputs)
     # training=False keeps BatchNorm statistics frozen while fine-tuning (see train.py).
     features = backbone(scaled, training=False)
-    features = keras.layers.Dropout(dropout)(features)
-    logits = keras.layers.Dense(race_count, name=RACE_HEAD_NAME)(features)
-    return keras.Model(inputs, logits, name="sorghum_race_model"), backbone
+    return inputs, keras.layers.Dropout(dropout)(features), backbone
 
 
 def race_indices(photos: list[RacePhoto], races: tuple[str, ...]) -> np.ndarray:

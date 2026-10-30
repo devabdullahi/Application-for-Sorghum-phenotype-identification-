@@ -19,7 +19,13 @@ import tensorflow as tf
 from sorghum_model import preprocessing
 from sorghum_model.manifest import ImageRecord
 from sorghum_model.preprocessing import load_model_input
-from sorghum_model.settings import MODEL_INPUT_SIZE_PX, Backbone, RaceTrainingSettings, TrainingSettings
+from sorghum_model.settings import (
+    MODEL_INPUT_SIZE_PX,
+    Backbone,
+    RaceTrainingSettings,
+    TrainingSettings,
+    TraitTrainingSettings,
+)
 from sorghum_model.species_classes import SPECIES_CLASS_NAMES
 from sorghum_model.splits import Split, count_per_class_and_split, find_undersized_classes
 from sorghum_model.training_history import (
@@ -127,13 +133,15 @@ def fit_in_two_phases(
     class_weight: dict[int, float] | None,
     run_dir: Path,
     model_file: str,
-    settings: "TrainingSettings | RaceTrainingSettings",
+    settings: "TrainingSettings | RaceTrainingSettings | TraitTrainingSettings",
+    metrics: list | dict | None = None,
 ) -> None:
     """Trains the head on a frozen backbone, then fine-tunes from `first_fine_tuned_layer` on.
 
     The model with the lowest validation loss is saved as `run_dir / model_file`. Every
     finished epoch is logged to `history.csv` and its weights saved, so a run that died
-    continues after its last finished epoch (the caller checks `resume`).
+    continues after its last finished epoch (the caller checks `resume`). `metrics` go to
+    `model.compile`; None logs accuracy, which suits a single-head model.
     """
     history_path = run_dir / HISTORY_FILE
     frozen_in_fine_tune = _layers_before(backbone, settings.first_fine_tuned_layer)
@@ -159,7 +167,7 @@ def fit_in_two_phases(
 
     if finished < settings.head_epochs:
         backbone.trainable = False
-        _compile(model, settings.head_learning_rate)
+        _compile(model, settings.head_learning_rate, metrics)
         if finished:
             _restore_with_optimizer(model, last_weights)
         model.fit(
@@ -179,7 +187,7 @@ def fit_in_two_phases(
         backbone.trainable = True
         for layer in frozen_in_fine_tune:
             layer.trainable = False
-        _compile(model, settings.fine_tune_learning_rate)
+        _compile(model, settings.fine_tune_learning_rate, metrics)
         if finished > settings.head_epochs:
             _restore_with_optimizer(model, last_weights)
         model.fit(
@@ -269,7 +277,7 @@ def _restore_with_optimizer(model: keras.Model, weights_path: Path) -> None:
 
 def make_dataset(
     paths: list[Path],
-    labels: np.ndarray,
+    labels: np.ndarray | dict[str, np.ndarray],
     sha256s: list[str],
     batch_size: int,
     cache_dir: Path,
@@ -277,6 +285,8 @@ def make_dataset(
     is_training: bool,
 ) -> tf.data.Dataset:
     """Batches of (0-255 float pixels, class index), decoded once into a tf.data file cache.
+
+    `labels` is one index per photo, or for a multi-head model a dict of them by output name.
 
     `sha256s` name the photos (in order) for the cache name. Training batches are shuffled
     and augmented after the cache, so every epoch sees new augmentations.
@@ -356,11 +366,12 @@ def _balanced_class_weights(records: list[ImageRecord]) -> dict[int, float]:
     }
 
 
-def _compile(model: keras.Model, learning_rate: float) -> None:
+def _compile(model: keras.Model, learning_rate: float, metrics: list | dict | None) -> None:
+    # One loss for every output: Keras applies it to each head of a multi-head model.
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate),
         loss=keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-        metrics=["accuracy"],
+        metrics=["accuracy"] if metrics is None else metrics,
     )
 
 
