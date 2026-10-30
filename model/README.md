@@ -143,6 +143,87 @@ finger and pearl millet then rest mostly on herbarium sheets: their field-photo 
 be weak until we add our own photos. **`no_plant` still needs our own photos** of the empty
 board, soil and hands, the scenes the app actually sees.
 
+## Cultivar data (2026-10-30)
+
+Cultivar-labelled photos have their own manifest format (`cultivar_manifest.py`): the label
+is an accession number, not a species class. Survey of sources, metric and plan:
+[ADR-0011](../docs/architecture/adr/0011-cultivar-accuracy-target.md) (draft).
+
+- `grin-download`: GRIN-Global's sorghum seed/panicle photos (USDA-ARS, public domain;
+  9,394 images, 8,965 accessions, 11 plantings; 9,393 downloaded, one is a 404). Rows go to
+  `manifests/cultivar-grin.csv`. GRIN's server answers slowly (about 6 s per image), so a
+  full run takes most of a day; it is resumable.
+- `grin-descriptors`: GRIN's race and trait observations for every photographed accession,
+  mapped to IBPGR state codes (`grin_descriptors.py`), in
+  `manifests/cultivar-grin-descriptors.csv`. Pages are cached, so a rerun fetches nothing.
+- `cultivar-split`: writes `splits/cultivar-grin-v1.csv` and
+  `splits/cultivar-grin-v1-summary.txt`. Per photo: `accession_split` (all photos of an
+  accession together; for trait heads and the race model), `planting_split` (one planting
+  per accession held out; for cross-planting matching), and `race` or `race_exclusion`.
+  It drops exact repeated manifest rows, refuses two different rows with one source id,
+  and fails if an accession or an image file is in two accession splits (checked on the
+  written file). The summary reconciles the images GRIN lists, the images downloaded, the
+  descriptor coverage, the race exclusions and the support per race and split.
+
+```bash
+uv run sorghum-model grin-download --data-root /Volumes/LaCie/sorghum-model/data/cultivar
+uv run sorghum-model grin-descriptors
+uv run sorghum-model cultivar-split
+```
+
+### Race labels and exclusions (`cultivar_races.py`)
+
+An accession gets a scored race only when every GRIN race observation names the same one of
+the fifteen Harlan & de Wet races (GRIN codes 01-15). Excluded accessions keep their photos
+in the split (trait heads still use them) but are never trained on or scored by the race
+model:
+
+| `race_exclusion` | Values | Why |
+|---|---|---|
+| `no-race-observation` | (none) | GRIN has no race for the accession |
+| `race-unknown` | Unknown (17) | GRIN itself does not know the race |
+| `not-a-race` | Shattercane (16), Mixed, Breeding line | weedy form, mixed seed lot, pedigree status: not one race |
+| `unmapped-value` | anything else | a value GRIN added later; map it before scoring |
+| `conflicting-observations` | e.g. Durra + Durra-bicolor | plantings disagree; choosing one would be a guess |
+
+Final counts (2026-10-30, `splits/cultivar-grin-v1-summary.txt`): 6,462 accessions / 6,715
+images scored; excluded 2,204 no-race-observation, 6 race-unknown, 197 not-a-race (Mixed
+182, Shattercane 13, Breeding line 2), 95 conflicting-observations, 0 unmapped-value.
+
+Trait-mapping assumptions still to confirm (`grin_descriptors.py`): Straw glume -> IBPGR
+White, Colourless midrib -> White, Lax panicle -> 1 "Very lax".
+
+Known gap: GRIN lists an accession with several images as one row per image, but each row's
+image cell shows the first image, so only the first image of those accessions is downloaded
+(the repeats are dropped). Fetching the others needs the NOTE column's paths.
+
+### Race model plan (T4, #24)
+
+Not trained yet: training waits for the shared MobileNetV2 backbone
+(`feature/species-model-v2`, ADR-0010) and for the CPU slot.
+
+1. **Data.** Photos with a `race` in `splits/cultivar-grin-v1.csv`, split by
+   `accession_split` (never by image; no accession or file crosses splits). Excluded labels
+   are neither trained on nor scored.
+2. **Model.** A race head (softmax over the scored races present in train) on the shared
+   MobileNetV2 backbone, same input spec and preprocessing as the species head. Class
+   weights balance races (support is very uneven). Augmentation must not hide traits that
+   define race (no hue shift; mild crops only, panicle and spikelet shape must stay).
+3. **Planting shortcut check.** Plantings differ in board, light and year, and race mix
+   differs per planting. Report accuracy per planting and a planting-only baseline (predict
+   the most common race of the photo's planting); the model must beat it clearly.
+4. **Calibration.** Temperature fitted on validation after INT8 quantization
+   (`calibration.py`), ECE reported. The group rule needs honest probabilities.
+5. **Answer rule.** `race_evaluation.returned_group`: the fewest top races reaching
+   `RaceEvaluationSettings.group_probability_mass`; a group above `max_group_size` is
+   "unrecognized". Both are tuned on validation only.
+6. **Metrics** (`race_evaluation.evaluate_races`, on test once): group-aware race accuracy
+   (true race in group, over all photos, so abstaining never helps), coverage, selective
+   accuracy, mean group size, per-race photo and accession support with in-group recall,
+   and the confusion matrix (top-1 race, plus an "unrecognized" column). The 89% target is
+   claimed only for group-aware accuracy at the reported coverage (ADR-0011); otherwise the
+   measured result and its limits are published.
+
 ## Setup
 
 Needs [uv](https://docs.astral.sh/uv/). TensorFlow needs Python 3.11 or 3.12.
