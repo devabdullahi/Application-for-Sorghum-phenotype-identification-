@@ -143,6 +143,25 @@ finger and pearl millet then rest mostly on herbarium sheets: their field-photo 
 be weak until we add our own photos. **`no_plant` still needs our own photos** of the empty
 board, soil and hands, the scenes the app actually sees.
 
+## Cultivar data (2026-10-30)
+
+Cultivar-labelled photos have their own manifest format (`cultivar_manifest.py`): the label
+is an accession number, not a species class. Survey of sources, metric and plan:
+[ADR-0010](../docs/architecture/adr/0010-cultivar-accuracy-target.md) (draft).
+
+- `grin-download`: GRIN-Global's sorghum seed/panicle photos (USDA-ARS, public domain;
+  9,410 images, 8,965 accessions, 11 plantings). Rows go to
+  `manifests/cultivar-grin.csv`. GRIN's server answers slowly (about 6 s per image), so a
+  full run takes most of a day; it is resumable.
+- `cultivar-split`: writes `splits/cultivar-grin-v1.csv` with two columns per photo:
+  `accession_split` (all photos of an accession together; for trait heads) and
+  `planting_split` (one planting per accession held out; for cross-planting matching).
+
+```bash
+uv run sorghum-model grin-download --data-root /Volumes/LaCie/sorghum-model/data/cultivar
+uv run sorghum-model cultivar-split
+```
+
 ## Setup
 
 Needs [uv](https://docs.astral.sh/uv/). TensorFlow needs Python 3.11 or 3.12.

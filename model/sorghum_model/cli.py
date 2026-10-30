@@ -46,6 +46,14 @@ DEFAULT_DATA_ROOT = MODEL_DIR / "data"
 DEFAULT_MANIFEST_DIR = MODEL_DIR / "manifests"
 DEFAULT_INAT_MANIFEST = DEFAULT_MANIFEST_DIR / "species-inaturalist.csv"
 DEFAULT_SPLIT_MANIFEST = MODEL_DIR / "splits" / "species-v1.csv"
+DEFAULT_CULTIVAR_DATA_ROOT = DEFAULT_DATA_ROOT / "cultivar"
+DEFAULT_GRIN_MANIFEST = DEFAULT_MANIFEST_DIR / "cultivar-grin.csv"
+DEFAULT_CULTIVAR_SPLIT = MODEL_DIR / "splits" / "cultivar-grin-v1.csv"
+# Names the cultivar split scheme; see SplitSettings.salt.
+CULTIVAR_SPLIT_SALT = "cultivar-grin-v1"
+# Same cadence as the species downloaders: losing at most this many rows on a crash is cheap,
+# because the files stay on disk and the next run re-adds their rows without fetching them.
+GRIN_MANIFEST_SAVE_EVERY = 200
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -58,6 +66,8 @@ def main(argv: list[str] | None = None) -> int:
     _add_mendeley_import(commands)
     _add_figshare_import(commands)
     _add_import_folder(commands)
+    _add_grin_download(commands)
+    _add_cultivar_split(commands)
     _add_review_labels(commands)
     _add_split(commands)
     _add_train(commands)
@@ -536,6 +546,57 @@ def _run_review_labels(arguments) -> None:
             if in_class:
                 verified = sum(r.label_status is LabelStatus.VERIFIED for r in in_class)
                 print(f"{manifest.name} {class_name:15} {verified}/{len(in_class)} verified")
+
+
+def _add_grin_download(commands) -> None:
+    command = commands.add_parser(
+        "grin-download", help="Download GRIN-Global's accession-labelled sorghum seed/panicle images."
+    )
+    command.add_argument("--data-root", type=Path, default=DEFAULT_CULTIVAR_DATA_ROOT)
+    command.add_argument("--manifest", type=Path, default=DEFAULT_GRIN_MANIFEST)
+    command.set_defaults(run=_run_grin_download)
+
+
+def _run_grin_download(arguments) -> None:
+    from sorghum_model import grin
+    from sorghum_model.cultivar_manifest import write_cultivar_manifest
+
+    def report_failure(image, error: Exception) -> None:
+        print(f"  failed: {image.accession_number} {image.image_path}: {error}", file=sys.stderr)
+
+    records = []
+    with manifest_lock(arguments.manifest):
+        for study in grin.SORGHUM_IMAGE_STUDIES:
+            in_study = 0
+            for record in grin.download_study(study, arguments.data_root, report_failure):
+                records.append(record)
+                in_study += 1
+                # Saved regularly, so an interrupted run keeps the rows of what it has.
+                if len(records) % GRIN_MANIFEST_SAVE_EVERY == 0:
+                    write_cultivar_manifest(records, arguments.manifest)
+            write_cultivar_manifest(records, arguments.manifest)
+            print(f"{study.name}: {in_study} images", flush=True)
+    print(f"grin: {len(records)} images of {len({r.cultivar_label for r in records})} accessions")
+
+
+def _add_cultivar_split(commands) -> None:
+    command = commands.add_parser(
+        "cultivar-split", help="Split a cultivar manifest by accession and by planting."
+    )
+    command.add_argument("--manifest", type=Path, default=DEFAULT_GRIN_MANIFEST)
+    command.add_argument("--out", type=Path, default=DEFAULT_CULTIVAR_SPLIT)
+    command.set_defaults(run=_run_cultivar_split)
+
+
+def _run_cultivar_split(arguments) -> None:
+    from sorghum_model.cultivar_manifest import read_cultivar_manifest, write_cultivar_split
+
+    settings = SplitSettings(salt=CULTIVAR_SPLIT_SALT)
+    records = read_cultivar_manifest(arguments.manifest)
+    write_cultivar_split(
+        records, arguments.out, settings.validation_fraction, settings.test_fraction, settings.salt
+    )
+    print(f"{len(records)} rows written to {arguments.out}")
 
 
 def _add_split(commands) -> None:
