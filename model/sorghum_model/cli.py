@@ -50,6 +50,8 @@ DEFAULT_SPLIT_MANIFEST = MODEL_DIR / "splits" / "species-v1.csv"
 DEFAULT_CULTIVAR_DATA_ROOT = DEFAULT_DATA_ROOT / "cultivar"
 DEFAULT_GRIN_MANIFEST = DEFAULT_MANIFEST_DIR / "cultivar-grin.csv"
 DEFAULT_GRIN_DESCRIPTORS = DEFAULT_MANIFEST_DIR / "cultivar-grin-descriptors.csv"
+# GRIN pages saved by grin-descriptors; cultivar-split reads the image study pages from here.
+DEFAULT_GRIN_PAGE_CACHE = DEFAULT_CULTIVAR_DATA_ROOT / "grin-descriptor-pages"
 DEFAULT_CULTIVAR_SPLIT = MODEL_DIR / "splits" / "cultivar-grin-v1.csv"
 # Names the cultivar split scheme; see SplitSettings.salt.
 CULTIVAR_SPLIT_SALT = "cultivar-grin-v1"
@@ -591,7 +593,7 @@ def _add_grin_descriptors(commands) -> None:
     command.add_argument(
         "--page-cache",
         type=Path,
-        default=DEFAULT_CULTIVAR_DATA_ROOT / "grin-descriptor-pages",
+        default=DEFAULT_GRIN_PAGE_CACHE,
         help="Fetched GRIN pages are kept here, so a rerun skips them.",
     )
     command.add_argument(
@@ -633,22 +635,58 @@ def _run_grin_descriptors(arguments) -> None:
 
 def _add_cultivar_split(commands) -> None:
     command = commands.add_parser(
-        "cultivar-split", help="Split a cultivar manifest by accession and by planting."
+        "cultivar-split",
+        help="Split a cultivar manifest by accession and by planting, with race labels and a summary.",
     )
     command.add_argument("--manifest", type=Path, default=DEFAULT_GRIN_MANIFEST)
+    command.add_argument("--descriptors", type=Path, default=DEFAULT_GRIN_DESCRIPTORS)
+    command.add_argument(
+        "--page-cache",
+        type=Path,
+        default=DEFAULT_GRIN_PAGE_CACHE,
+        help="Cached GRIN study pages (from grin-descriptors), to count the images GRIN lists.",
+    )
     command.add_argument("--out", type=Path, default=DEFAULT_CULTIVAR_SPLIT)
     command.set_defaults(run=_run_cultivar_split)
 
 
 def _run_cultivar_split(arguments) -> None:
-    from sorghum_model.cultivar_manifest import read_cultivar_manifest, write_cultivar_split
+    from sorghum_model import grin
+    from sorghum_model.cultivar_manifest import (
+        drop_repeated_rows,
+        find_accession_split_leaks,
+        read_cultivar_manifest,
+        read_cultivar_split,
+        write_cultivar_split,
+    )
+    from sorghum_model.cultivar_races import race_labels
+    from sorghum_model.cultivar_reconciliation import ListedImage, reconciliation_report
+    from sorghum_model.grin_descriptors import cache_file_name, read_observations
 
     settings = SplitSettings(salt=CULTIVAR_SPLIT_SALT)
-    records = read_cultivar_manifest(arguments.manifest)
+    records, repeated_rows_dropped = drop_repeated_rows(read_cultivar_manifest(arguments.manifest))
+    observations = read_observations(arguments.descriptors)
+    races = race_labels({record.cultivar_label for record in records}, observations)
     write_cultivar_split(
-        records, arguments.out, settings.validation_fraction, settings.test_fraction, settings.salt
+        records, races, arguments.out, settings.validation_fraction, settings.test_fraction, settings.salt
     )
-    print(f"{len(records)} rows written to {arguments.out}")
+    rows = read_cultivar_split(arguments.out)
+    leaks = find_accession_split_leaks(rows)
+    if leaks:
+        raise SystemExit("accession split leaks:\n" + "\n".join(leaks))
+
+    listed_images = []
+    for study in grin.SORGHUM_IMAGE_STUDIES:
+        page = arguments.page_cache / cache_file_name(study.page_url)
+        listed_images += [
+            ListedImage(f"{study.name}/{image.accession_id}", image.accession_number)
+            for image in grin.parse_study_page(page.read_text(encoding="utf-8"))
+        ]
+    lines = reconciliation_report(rows, listed_images, observations, races, repeated_rows_dropped)
+    summary = arguments.out.with_name(f"{arguments.out.stem}-summary.txt")
+    summary.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print("\n".join(lines))
+    print(f"{len(rows)} rows written to {arguments.out}; summary in {summary}")
 
 
 def _add_split(commands) -> None:

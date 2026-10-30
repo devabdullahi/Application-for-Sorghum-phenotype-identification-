@@ -366,6 +366,12 @@ def write_observations(observations: list[DescriptorObservation], path: Path) ->
     temporary.replace(path)
 
 
+def read_observations(path: Path) -> list[DescriptorObservation]:
+    """Reads a file written by `write_observations`."""
+    with path.open(newline="", encoding="utf-8") as file:
+        return [DescriptorObservation(**row) for row in csv.DictReader(file)]
+
+
 def coverage_report(
     observations: list[DescriptorObservation], photographed: set[str], downloaded: set[str]
 ) -> list[str]:

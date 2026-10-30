@@ -16,14 +16,22 @@ Two splits are written for every row, both by group and never by image:
   Sorghum-100. Accessions with one planting cannot be tested this way and are `train`.
 """
 
+from __future__ import annotations
+
 import csv
 import hashlib
 import os
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sorghum_model.splits import Split, assign_split
+
+if TYPE_CHECKING:
+    # Type only: cultivar_races imports grin_descriptors, which imports grin, which imports
+    # this module for CultivarImageRecord.
+    from sorghum_model.cultivar_races import AccessionRace
 
 # Licence codes a cultivar row may carry. GRIN-Global images are taken by USDA-ARS staff,
 # which makes them US federal government works with no copyright in the US (17 U.S.C. 105).
@@ -94,6 +102,18 @@ def read_cultivar_manifest(path: Path) -> list[CultivarImageRecord]:
         return [CultivarImageRecord(**row) for row in csv.DictReader(file)]
 
 
+def drop_repeated_rows(records: list[CultivarImageRecord]) -> tuple[list[CultivarImageRecord], int]:
+    """Returns the records without exact repeats, and how many repeats were dropped.
+
+    Before `grin.parse_study_page` skipped repeated rows, an accession with several images on
+    a GRIN study page got one identical row per image (2026-10-30 download), all for the first
+    image. A repeat is the same file twice, so it is dropped; a record that differs in any
+    field is kept, and `write_cultivar_split` refuses two of them with one (source, source_id).
+    """
+    unique = list(dict.fromkeys(records))
+    return unique, len(records) - len(unique)
+
+
 def assign_planting_splits(records: list[CultivarImageRecord], salt: str) -> dict[tuple[str, str], Split]:
     """Returns the planting split of every record, keyed by (source, source_id).
 
@@ -133,24 +153,42 @@ SPLIT_COLUMNS: tuple[str, ...] = (
     "planting_id",
     "accession_split",
     "planting_split",
+    "race",
+    "race_exclusion",
 )
 
 
 def write_cultivar_split(
     records: list[CultivarImageRecord],
+    races: dict[str, AccessionRace],
     path: Path,
     validation_fraction: float,
     test_fraction: float,
     salt: str,
 ) -> None:
-    """Writes both splits for every record (accession-grouped and planting-grouped)."""
+    """Writes both splits and the race label of every record.
+
+    `races` must hold every record's accession (`cultivar_races.race_labels`). Raises
+    ValueError when two records share a (source, source_id), because the planting split is
+    keyed by it.
+    """
+    keys = Counter((record.source, record.source_id) for record in records)
+    repeated = sorted(key for key, count in keys.items() if count > 1)
+    if repeated:
+        raise ValueError(f"{len(repeated)} (source, source_id) pairs occur twice, e.g. {repeated[0]}")
+    missing = sorted({record.cultivar_label for record in records} - races.keys())
+    if missing:
+        raise ValueError(f"no race label for {len(missing)} accessions, e.g. {missing[0]}")
+
     planting_splits = assign_planting_splits(records, salt)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as file:
+    temporary = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    with temporary.open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=SPLIT_COLUMNS)
         writer.writeheader()
         for record in sorted(records, key=lambda r: (r.source, r.source_id)):
             accession_split = assign_split(record.cultivar_label, validation_fraction, test_fraction, salt)
+            race = races[record.cultivar_label]
             writer.writerow(
                 {
                     "sha256": record.sha256,
@@ -160,8 +198,35 @@ def write_cultivar_split(
                     "planting_id": record.planting_id,
                     "accession_split": accession_split.value,
                     "planting_split": planting_splits[(record.source, record.source_id)].value,
+                    "race": race.race,
+                    "race_exclusion": race.exclusion.value if race.exclusion else "",
                 }
             )
+    temporary.replace(path)
+
+
+def read_cultivar_split(path: Path) -> list[dict[str, str]]:
+    """Reads a split manifest written by `write_cultivar_split`, one dict per photo."""
+    with path.open(newline="", encoding="utf-8") as file:
+        return list(csv.DictReader(file))
+
+
+def find_accession_split_leaks(rows: list[dict[str, str]]) -> list[str]:
+    """Describes every accession, and every image file, found in more than one accession split.
+
+    Checked on the written file, so it guards the committed artifact, not only the code that
+    wrote it. A file shared by two accessions in different splits would let a model see a
+    test photo in training. Empty when the split is clean.
+    """
+    problems = []
+    for column, what in (("cultivar_label", "accession"), ("sha256", "image file")):
+        splits_of: dict[str, set[str]] = defaultdict(set)
+        for row in rows:
+            splits_of[row[column]].add(row["accession_split"])
+        for key, splits in sorted(splits_of.items()):
+            if len(splits) > 1:
+                problems.append(f"{what} {key} is in {sorted(splits)}")
+    return problems
 
 
 def _stable_hash(text: str) -> bytes:

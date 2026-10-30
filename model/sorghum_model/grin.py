@@ -75,7 +75,8 @@ class GrinAccessionImage:
 
 
 def parse_study_page(page_html: str) -> list[GrinAccessionImage]:
-    """Reads the accession rows of a study page. Rows without an image are skipped.
+    """Reads the accession rows of a study page. Rows without an image, and rows repeating an
+    earlier row's accession and image, are skipped.
 
     Columns are found by their header (ID, ACCESSION, NAME, TAXONOMY, ORIGIN, IMAGE), so a
     reordered table still parses; a page without those headers raises ValueError.
@@ -90,6 +91,7 @@ def parse_study_page(page_html: str) -> list[GrinAccessionImage]:
     column = {name: header.index(name) for name in required}
 
     images = []
+    seen: set[tuple[str, str]] = set()
     for row in rows:
         if len(row) < len(header):
             continue
@@ -97,6 +99,13 @@ def parse_study_page(page_html: str) -> list[GrinAccessionImage]:
         uploads = [source for source in image_sources if "/uploads/images/" in source]
         if not uploads:
             continue
+        # An accession with several images has one row per image ("Fourth image of
+        # Seed/Panicle"), but every row's IMAGE cell shows the first image, so the repeats
+        # would download one file several times.
+        key = (row[column["ID"]], uploads[0])
+        if key in seen:
+            continue
+        seen.add(key)
         images.append(
             GrinAccessionImage(
                 accession_id=row[column["ID"]],

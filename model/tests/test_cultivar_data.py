@@ -1,6 +1,5 @@
 """GRIN study-page parsing and the cultivar manifest's grouped splits."""
 
-import csv
 from collections import Counter
 
 import pytest
@@ -8,10 +7,14 @@ import pytest
 from sorghum_model.cultivar_manifest import (
     CultivarImageRecord,
     assign_planting_splits,
+    drop_repeated_rows,
+    find_accession_split_leaks,
     read_cultivar_manifest,
+    read_cultivar_split,
     write_cultivar_manifest,
     write_cultivar_split,
 )
+from sorghum_model.cultivar_races import AccessionRace, RaceExclusion
 from sorghum_model.grin import parse_study_page
 from sorghum_model.splits import Split
 
@@ -99,13 +102,17 @@ def test_planting_split_is_stable_when_other_accessions_are_added():
     assert all(after[key] == split for key, split in before.items())
 
 
+def races_for(records: list[CultivarImageRecord]) -> dict[str, AccessionRace]:
+    return {record.cultivar_label: AccessionRace("Durra", None, ("Durra",)) for record in records}
+
+
 def test_accession_split_keeps_every_photo_of_an_accession_together(tmp_path):
     records = [make_cultivar_record(f"PI {i}", planting) for i in range(50) for planting in ("A", "B")]
     out = tmp_path / "split.csv"
-    write_cultivar_split(records, out, 0.15, 0.15, "salt")
+    write_cultivar_split(records, races_for(records), out, 0.15, 0.15, "salt")
 
-    with out.open() as file:
-        rows = list(csv.DictReader(file))
+    rows = read_cultivar_split(out)
+    assert find_accession_split_leaks(rows) == []
     splits_per_accession: dict[str, set[str]] = {}
     for row in rows:
         splits_per_accession.setdefault(row["cultivar_label"], set()).add(row["accession_split"])
@@ -120,3 +127,61 @@ def test_manifest_round_trips_and_rejects_unknown_licences(tmp_path):
 
     with pytest.raises(ValueError, match="licence"):
         make_cultivar_record("PI 1", "A", license="all-rights-reserved")
+
+
+def test_parse_study_page_skips_rows_repeating_an_accession_and_image():
+    # GRIN lists an accession with four images as four rows whose IMAGE cell shows the first.
+    first_row_start = STUDY_PAGE.index("<tr><td>0</td>")
+    first_row = STUDY_PAGE[first_row_start : STUDY_PAGE.index("</tr>", first_row_start) + len("</tr>")]
+    page = STUDY_PAGE.replace(first_row, first_row * 4)
+    assert len(parse_study_page(page)) == 1
+
+
+def test_drop_repeated_rows_drops_only_exact_copies():
+    record = make_cultivar_record("PI 1", "A")
+    other_planting = make_cultivar_record("PI 1", "B")
+    unique, dropped = drop_repeated_rows([record, record, other_planting, record])
+    assert unique == [record, other_planting]
+    assert dropped == 2
+
+
+def test_split_refuses_two_different_rows_with_one_source_id(tmp_path):
+    record = make_cultivar_record("PI 1", "A")
+    changed = make_cultivar_record("PI 1", "A", sha256="f" * 64)
+    with pytest.raises(ValueError, match="occur twice"):
+        write_cultivar_split([record, changed], races_for([record]), tmp_path / "s.csv", 0.15, 0.15, "salt")
+
+
+def test_split_refuses_an_accession_without_a_race_label(tmp_path):
+    record = make_cultivar_record("PI 1", "A")
+    with pytest.raises(ValueError, match="no race label"):
+        write_cultivar_split([record], {}, tmp_path / "s.csv", 0.15, 0.15, "salt")
+
+
+def test_split_writes_the_race_or_the_exclusion(tmp_path):
+    records = [make_cultivar_record("PI 1", "A"), make_cultivar_record("PI 2", "A")]
+    races = {
+        "PI 1": AccessionRace("Caudatum", None, ("Caudatum",)),
+        "PI 2": AccessionRace("", RaceExclusion.CONFLICTING_OBSERVATIONS, ("Caudatum", "Durra")),
+    }
+    out = tmp_path / "s.csv"
+    write_cultivar_split(records, races, out, 0.15, 0.15, "salt")
+    by_accession = {row["cultivar_label"]: row for row in read_cultivar_split(out)}
+    assert (by_accession["PI 1"]["race"], by_accession["PI 1"]["race_exclusion"]) == ("Caudatum", "")
+    assert (by_accession["PI 2"]["race"], by_accession["PI 2"]["race_exclusion"]) == ("", "conflicting-observations")
+
+
+def split_row(accession: str, sha256: str, split: str) -> dict[str, str]:
+    return {"cultivar_label": accession, "sha256": sha256, "accession_split": split}
+
+
+def test_leak_check_finds_an_accession_in_two_splits():
+    rows = [split_row("PI 1", "a", "train"), split_row("PI 1", "b", "test")]
+    assert find_accession_split_leaks(rows) == ["accession PI 1 is in ['test', 'train']"]
+
+
+def test_leak_check_finds_one_file_under_two_accessions_in_two_splits():
+    rows = [split_row("PI 1", "same", "train"), split_row("PI 2", "same", "validation")]
+    assert find_accession_split_leaks(rows) == ["image file same is in ['train', 'validation']"]
+    # The same file under two accessions of one split does not leak.
+    assert find_accession_split_leaks([split_row("PI 1", "same", "test"), split_row("PI 2", "same", "test")]) == []
