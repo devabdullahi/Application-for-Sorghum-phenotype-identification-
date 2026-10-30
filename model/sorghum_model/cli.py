@@ -9,6 +9,7 @@ Run `uv run sorghum-model --help` from `model/`. See model/README.md for the ful
 
 import argparse
 import http.client
+import json
 import signal
 import sys
 from collections.abc import Iterable
@@ -43,6 +44,7 @@ from sorghum_model.settings import (
 )
 from sorghum_model.species_classes import SPECIES_CLASS_NAMES, SPECIES_CLASSES
 from sorghum_model.splits import (
+    Split,
     count_per_class_and_split,
     read_split_manifest,
     split_records,
@@ -92,6 +94,7 @@ def main(argv: list[str] | None = None) -> int:
     _add_export(commands)
     _add_race_train(commands)
     _add_race_export(commands)
+    _add_bundle_heads(commands)
     _add_trait_labels(commands)
     _add_trait_train(commands)
     _add_trait_export(commands)
@@ -988,6 +991,71 @@ def _run_race_export(arguments) -> None:
     gate = document["gate"]
     print(f"exported {model_name}-v{arguments.version} to {arguments.out_dir}; gate "
           + ("passed" if gate["passed"] else "missed: " + "; ".join(gate["problems"])))
+
+def _add_bundle_heads(commands) -> None:
+    command = commands.add_parser(
+        "bundle-heads",
+        help="Pack the species export and the basic-race export into one traits-vN model with both "
+        "outputs, metadata and parity fixtures; nothing is retrained (ADR-0012, needs the export extra).",
+    )
+    command.add_argument("--species-export-dir", type=Path, required=True, help="Holds traits-vM.{tflite,json}.")
+    command.add_argument("--species-fixtures-dir", type=Path, required=True, help="The species export's fixtures.")
+    command.add_argument("--basic-race-export-dir", type=Path, required=True, help="Holds basic-race-vK.{tflite,json}.")
+    command.add_argument("--manifest", type=Path, default=DEFAULT_GRIN_MANIFEST)
+    command.add_argument("--splits", type=Path, default=DEFAULT_CULTIVAR_SPLIT)
+    command.add_argument("--data-root", type=Path, default=DEFAULT_CULTIVAR_DATA_ROOT)
+    command.add_argument("--version", type=int, required=True, help="Bundle version N (traits-vN).")
+    command.add_argument("--out-dir", type=Path, required=True)
+    command.add_argument(
+        "--fixtures-root", type=Path, required=True,
+        help="Gets species/ and basic-race/ fixture folders (shared/src/commonTest/resources).",
+    )
+    command.add_argument("--race-fixtures-per-race", type=int, default=2)
+    command.set_defaults(run=_run_bundle_heads)
+
+
+def _run_bundle_heads(arguments) -> None:
+    from sorghum_model.bundle_export import bundle_species_and_basic_race, read_source_export
+    from sorghum_model.cultivar_manifest import read_cultivar_manifest
+    from sorghum_model.race_photos import photos_in, read_race_photos, split_basic_and_intermediate
+
+    species = _single_export(arguments.species_export_dir, "traits-v")
+    basic_race = _single_export(arguments.basic_race_export_dir, "basic-race-v")
+    species_metadata = json.loads(species[1].read_text(encoding="utf-8"))
+    race_metadata = json.loads(basic_race[1].read_text(encoding="utf-8"))
+    photos, _ = split_basic_and_intermediate(read_race_photos(arguments.manifest, arguments.splits))
+    provenance = race_metadata["provenance"]
+    if (provenance["splitManifestSha256"], provenance["imageManifestSha256"]) != (
+        sha256_of_file(arguments.splits), sha256_of_file(arguments.manifest)
+    ):
+        raise ValueError("the basic-race export was made from another split or manifest than --splits and --manifest")
+    validation, test = photos_in(photos, Split.VALIDATION), photos_in(photos, Split.TEST)
+    metadata = bundle_species_and_basic_race(
+        species=read_source_export(*species, species_metadata["trainingData"]["modelFileSha256"]),
+        species_fixtures_dir=arguments.species_fixtures_dir,
+        basic_race=read_source_export(*basic_race, race_metadata["provenance"]["modelFileSha256"]),
+        race_test_photos=test,
+        race_verification_photos=validation + test,
+        image_records={record.image_path: record for record in read_cultivar_manifest(arguments.manifest)},
+        data_root=arguments.data_root,
+        version=arguments.version,
+        out_dir=arguments.out_dir,
+        fixtures_root=arguments.fixtures_root,
+        race_fixture_count_per_race=arguments.race_fixtures_per_race,
+    )
+    print(f"bundled {metadata['modelFile']} with heads {metadata['headOrder']} into {arguments.out_dir}")
+
+
+def _single_export(directory: Path, prefix: str) -> tuple[Path, Path]:
+    """The one `<prefix>N.tflite` and its `.json` in `directory` ("._" files are exFAT metadata)."""
+    models = [p for p in directory.glob(f"{prefix}*.tflite") if not p.name.startswith("._")]
+    if len(models) != 1:
+        raise ValueError(f"expected one {prefix}N.tflite in {directory}, found {len(models)}")
+    metadata = models[0].with_suffix(".json")
+    if not metadata.exists():
+        raise ValueError(f"{metadata} is missing")
+    return models[0], metadata
+
 
 # The catalogue traits a GRIN panicle-and-grain photo shows and GRIN labels (`cultivar_traits`).
 # Seed weight is a candidate for the probe only: the catalogue reads it as a measured trait.

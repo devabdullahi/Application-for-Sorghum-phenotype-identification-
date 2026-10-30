@@ -119,6 +119,7 @@ internal fun metadataJson(
     extraSpeciesKeys: String = "",
     headId: String = "species",
     outputIndex: Int = 0,
+    extraHeads: String = "",
 ): String = """
 {
   "backbone": "MobileNetV3-Small (ImageNet weights)",
@@ -132,7 +133,7 @@ internal fun metadataJson(
       "quantizationParity": {},
       "sorghumThreshold": $sorghumThreshold,
       "temperature": $temperature
-    }
+    }$extraHeads
   },
   "input": {
     "channelOrder": "RGB",

@@ -1,5 +1,5 @@
 {
-  "modelVersion": 2,
+  "modelVersion": 3,
   "head": "species",
   "logitStep": 0.23185023665428162,
   "logitToleranceSource": "scale of the int8 input to DEQUANTIZE",

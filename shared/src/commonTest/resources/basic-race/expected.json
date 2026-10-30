@@ -1,0 +1,237 @@
+{
+  "modelVersion": 3,
+  "head": "basicRace",
+  "outputIndex": 1,
+  "logitStep": 0.0805220976471901,
+  "logitToleranceSource": "scale of the int8 input to DEQUANTIZE",
+  "fixtures": [
+    {
+      "image": "basic-race-Bicolor-PI453238-62996aeb.png",
+      "race": "Bicolor",
+      "logits": [
+        0.48313260078430176,
+        -4.26767110824585,
+        2.0935745239257812,
+        -2.8987956047058105,
+        -4.26767110824585
+      ],
+      "probabilities": [
+        0.22989295423030853,
+        0.007449669297784567,
+        0.7351961135864258,
+        0.020011644810438156,
+        0.007449669297784567
+      ],
+      "answer": [
+        "Durra",
+        "Bicolor"
+      ],
+      "license": "us-gov-public-domain",
+      "attribution": "USDA-ARS GRIN-Global, SORGHUM.IMAGE.ETHIOPIAN.1998-1999, accession PI 453238"
+    },
+    {
+      "image": "basic-race-Bicolor-PI453239-3d159fef.png",
+      "race": "Bicolor",
+      "logits": [
+        2.496185064315796,
+        -5.072892189025879,
+        4.026104927062988,
+        -5.717069149017334,
+        -7.246988773345947
+      ],
+      "probabilities": [
+        0.24843570590019226,
+        0.0010526630794629455,
+        0.7496312856674194,
+        0.0006612081779167056,
+        0.0002191314852098003
+      ],
+      "answer": [
+        "Durra",
+        "Bicolor"
+      ],
+      "license": "us-gov-public-domain",
+      "attribution": "USDA-ARS GRIN-Global, SORGHUM.IMAGE.ETHIOPIAN.1998-1999, accession PI 453239"
+    },
+    {
+      "image": "basic-race-Caudatum-PI453164-c158e61d.png",
+      "race": "Caudatum",
+      "logits": [
+        -3.7040164470672607,
+        1.3688756227493286,
+        -1.0467872619628906,
+        -2.013052463531494,
+        -3.4624502658843994
+      ],
+      "probabilities": [
+        0.01948348991572857,
+        0.7586318254470825,
+        0.13265228271484375,
+        0.0660371333360672,
+        0.023195210844278336
+      ],
+      "answer": [
+        "Caudatum",
+        "Durra"
+      ],
+      "license": "us-gov-public-domain",
+      "attribution": "USDA-ARS GRIN-Global, SORGHUM.IMAGE.ETHIOPIAN.1998-1999, accession PI 453164"
+    },
+    {
+      "image": "basic-race-Caudatum-PI453661-52fd07ae.png",
+      "race": "Caudatum",
+      "logits": [
+        -3.7040164470672607,
+        1.6909641027450562,
+        -0.3220883905887604,
+        -6.683333873748779,
+        -3.4624502658843994
+      ],
+      "probabilities": [
+        0.015892166644334793,
+        0.7807695865631104,
+        0.1825685352087021,
+        0.0018499487778171897,
+        0.018919719383120537
+      ],
+      "answer": [
+        "Caudatum",
+        "Durra"
+      ],
+      "license": "us-gov-public-domain",
+      "attribution": "USDA-ARS GRIN-Global, SORGHUM.IMAGE.ETHIOPIAN.1998-1999, accession PI 453661"
+    },
+    {
+      "image": "basic-race-Durra-PI452540-0d9c9298.png",
+      "race": "Durra",
+      "logits": [
+        -5.636546611785889,
+        -3.865060806274414,
+        4.348193168640137,
+        -8.5353422164917,
+        -5.717069149017334
+      ],
+      "probabilities": [
+        0.0007378057343885303,
+        0.0026503747794777155,
+        0.9958246946334839,
+        9.102538751903921e-05,
+        0.0006961423205211759
+      ],
+      "answer": [
+        "Durra"
+      ],
+      "license": "us-gov-public-domain",
+      "attribution": "USDA-ARS GRIN-Global, SORGHUM.IMAGE.ETHIOPIAN.1998-1999, accession PI 452540"
+    },
+    {
+      "image": "basic-race-Durra-PI452548-8389e2e0.png",
+      "race": "Durra",
+      "logits": [
+        -6.924900531768799,
+        -3.945582866668701,
+        7.810643672943115,
+        -10.306828498840332,
+        -4.589759349822998
+      ],
+      "probabilities": [
+        2.4000097255338915e-05,
+        0.0002061753475572914,
+        0.9996380805969238,
+        2.0891525309707504e-06,
+        0.00012950471136718988
+      ],
+      "answer": [
+        "Durra"
+      ],
+      "license": "us-gov-public-domain",
+      "attribution": "USDA-ARS GRIN-Global, SORGHUM.IMAGE.ETHIOPIAN.1998-1999, accession PI 452548"
+    },
+    {
+      "image": "basic-race-Guinea-PI510979-6b8796cd.png",
+      "race": "Guinea",
+      "logits": [
+        -4.670281887054443,
+        0.5636546611785889,
+        -1.2078315019607544,
+        -0.5636546611785889,
+        -4.589759349822998
+      ],
+      "probabilities": [
+        0.012927176430821419,
+        0.5653999447822571,
+        0.15739481151103973,
+        0.2505771815776825,
+        0.01370085496455431
+      ],
+      "answer": null,
+      "license": "us-gov-public-domain",
+      "attribution": "USDA-ARS GRIN-Global, SORGHUM.IMAGE.ISABELA.2010, accession PI 510979"
+    },
+    {
+      "image": "basic-race-Guinea-PI526657-7a5f2bef.png",
+      "race": "Guinea",
+      "logits": [
+        -0.3220883905887604,
+        -0.4026104807853699,
+        -3.140361785888672,
+        4.1871490478515625,
+        -4.589759349822998
+      ],
+      "probabilities": [
+        0.03566138818860054,
+        0.03364762291312218,
+        0.004662967752665281,
+        0.9243901968002319,
+        0.0016378449508920312
+      ],
+      "answer": [
+        "Guinea"
+      ],
+      "license": "us-gov-public-domain",
+      "attribution": "USDA-ARS GRIN-Global, SORGHUM.IMAGE.ISABELA.2010, accession PI 526657"
+    },
+    {
+      "image": "basic-race-Kafir-PI51609-07307af2.png",
+      "race": "Kafir",
+      "logits": [
+        -1.1273093223571777,
+        1.6909641027450562,
+        -2.415663003921509,
+        -2.013052463531494,
+        -1.7714861631393433
+      ],
+      "probabilities": [
+        0.09805769473314285,
+        0.7499243021011353,
+        0.0386882983148098,
+        0.051736727356910706,
+        0.06159290298819542
+      ],
+      "answer": null,
+      "license": "us-gov-public-domain",
+      "attribution": "USDA-ARS GRIN-Global, SORGHUM.IMAGE.ISABELA.2010, accession PI 51609"
+    },
+    {
+      "image": "basic-race-Kafir-PI287676-fc8975a9.png",
+      "race": "Kafir",
+      "logits": [
+        -2.415663003921509,
+        1.1273093223571777,
+        -1.1273093223571777,
+        -5.878113269805908,
+        -1.2883535623550415
+      ],
+      "probabilities": [
+        0.05325588211417198,
+        0.6872239112854004,
+        0.13498009741306305,
+        0.004374021664261818,
+        0.12016608566045761
+      ],
+      "answer": null,
+      "license": "us-gov-public-domain",
+      "attribution": "USDA-ARS GRIN-Global, SORGHUM.IMAGE.ISABELA.2010, accession PI 287676"
+    }
+  ]
+}
