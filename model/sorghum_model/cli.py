@@ -36,6 +36,9 @@ from sorghum_model.settings import (
     RaceTrainingSettings,
     SplitSettings,
     TrainingSettings,
+    TraitGateSettings,
+    TraitLabelSettings,
+    TraitTrainingSettings,
 )
 from sorghum_model.species_classes import SPECIES_CLASS_NAMES, SPECIES_CLASSES
 from sorghum_model.splits import (
@@ -82,6 +85,10 @@ def main(argv: list[str] | None = None) -> int:
     _add_export(commands)
     _add_race_train(commands)
     _add_race_export(commands)
+    _add_trait_labels(commands)
+    _add_trait_train(commands)
+    _add_trait_export(commands)
+    _add_trait_ranking(commands)
     arguments = parser.parse_args(argv)
     signal.signal(signal.SIGTERM, exit_on_terminate)
     try:
@@ -877,6 +884,146 @@ def _run_race_export(arguments) -> None:
     gate = document["gate"]
     print(f"exported race-v{arguments.version} to {arguments.out_dir}; gate "
           + ("passed" if gate["passed"] else "missed: " + "; ".join(gate["problems"])))
+
+
+# The catalogue traits a GRIN panicle-and-grain photo shows and GRIN labels (`cultivar_traits`).
+# Seed weight is a candidate for the probe only: the catalogue reads it as a measured trait.
+DEFAULT_HEAD_TRAITS = ("glumeColour", "grainColour", "panicleCompactnessAndShape")
+# Must equal shared TraitNoiseSettings.minStateProbability (TraitEstimate.kt); copied by hand.
+APP_TRAIT_NOISE_FLOOR = 0.01
+
+
+def _add_trait_photo_arguments(command) -> None:
+    command.add_argument("--manifest", type=Path, default=DEFAULT_GRIN_MANIFEST)
+    command.add_argument("--splits", type=Path, default=DEFAULT_CULTIVAR_SPLIT)
+    command.add_argument("--descriptors", type=Path, default=DEFAULT_GRIN_DESCRIPTORS)
+
+
+def _add_trait_labels(commands) -> None:
+    command = commands.add_parser(
+        "trait-labels",
+        help="Per-accession trait labels from GRIN descriptors: exclusions, coverage and state support per split.",
+    )
+    _add_trait_photo_arguments(command)
+    command.add_argument(
+        "--out", type=Path, default=None,
+        help="Summary file (default: next to --splits, named <split>-trait-summary.txt).",
+    )
+    command.set_defaults(run=_run_trait_labels)
+
+
+def _run_trait_labels(arguments) -> None:
+    from sorghum_model.cultivar_traits import read_labelled_trait_photos, trait_label_report
+
+    photos, labels = read_labelled_trait_photos(arguments.manifest, arguments.splits, arguments.descriptors)
+    lines = trait_label_report(photos, labels, TraitLabelSettings().min_train_accessions_per_state)
+    out = arguments.out or arguments.splits.with_name(f"{arguments.splits.stem}-trait-summary.txt")
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print("\n".join(lines))
+    print(f"wrote {out}")
+
+
+def _trait_photos_and_heads(arguments):
+    from sorghum_model.cultivar_traits import candidate_trait, head_states, read_labelled_trait_photos
+
+    photos, _ = read_labelled_trait_photos(arguments.manifest, arguments.splits, arguments.descriptors)
+    minimum = TraitLabelSettings().min_train_accessions_per_state
+    heads = {trait_id: head_states(photos, candidate_trait(trait_id), minimum) for trait_id in arguments.traits}
+    return photos, heads
+
+
+def _add_trait_train(commands) -> None:
+    command = commands.add_parser(
+        "trait-train", help="Train learned trait heads on a species run's backbone (needs the train extra)."
+    )
+    _add_trait_photo_arguments(command)
+    command.add_argument("--data-root", type=Path, default=DEFAULT_CULTIVAR_DATA_ROOT)
+    command.add_argument("--run-dir", type=Path, required=True)
+    command.add_argument("--traits", nargs="+", default=list(DEFAULT_HEAD_TRAITS))
+    command.add_argument(
+        "--starting-model", type=Path, required=True,
+        help="species.keras of the run whose backbone the heads start from (traits-v2: run v2-3).",
+    )
+    command.add_argument(
+        "--fine-tune-epochs", type=int, default=TraitTrainingSettings().fine_tune_epochs,
+        help="0 (default) keeps the traits-v2 backbone frozen.",
+    )
+    command.add_argument("--resume", action="store_true")
+    command.set_defaults(run=_run_trait_train)
+
+
+def _run_trait_train(arguments) -> None:
+    from sorghum_model.trait_training import train_trait_model
+
+    photos, heads = _trait_photos_and_heads(arguments)
+    settings = TraitTrainingSettings(fine_tune_epochs=arguments.fine_tune_epochs)
+    train_trait_model(
+        photos, heads, arguments.data_root, arguments.starting_model, arguments.run_dir, settings,
+        resume=arguments.resume,
+    )
+    print(f"trained trait heads {heads} in {arguments.run_dir}")
+
+
+def _add_trait_export(commands) -> None:
+    command = commands.add_parser(
+        "trait-export",
+        help="Quantize a trait-head run to INT8, fit a temperature per head on validation and score "
+        "every head once on test against the R6 gate (needs the export extra).",
+    )
+    _add_trait_photo_arguments(command)
+    command.add_argument("--data-root", type=Path, default=DEFAULT_CULTIVAR_DATA_ROOT)
+    command.add_argument("--run-dir", type=Path, required=True)
+    command.add_argument("--traits", nargs="+", default=list(DEFAULT_HEAD_TRAITS))
+    command.add_argument("--version", type=int, required=True, help="Trait-head model version N.")
+    command.add_argument("--out-dir", type=Path, required=True)
+    command.set_defaults(run=_run_trait_export)
+
+
+def _run_trait_export(arguments) -> None:
+    from sorghum_model.trait_export import export_trait_model
+
+    photos, heads = _trait_photos_and_heads(arguments)
+    provenance = {
+        "splitManifestSha256": sha256_of_file(arguments.splits),
+        "imageManifestSha256": sha256_of_file(arguments.manifest),
+        "descriptorManifestSha256": sha256_of_file(arguments.descriptors),
+        "runDir": str(arguments.run_dir),
+    }
+    document = export_trait_model(
+        arguments.run_dir, photos, heads, arguments.data_root, arguments.version, arguments.out_dir,
+        ExportSettings(), TraitGateSettings(), provenance,
+    )
+    print(f"exported trait-heads-v{arguments.version} to {arguments.out_dir}; heads passing R6: "
+          + (", ".join(document["passedHeads"]) or "none"))
+
+
+def _add_trait_ranking(commands) -> None:
+    command = commands.add_parser(
+        "trait-ranking",
+        help="Offline trait-first check: trait-head outputs through naive Bayes to race and accession rankings.",
+    )
+    _add_trait_photo_arguments(command)
+    command.add_argument("--traits", nargs="+", default=list(DEFAULT_HEAD_TRAITS))
+    command.add_argument("--outputs", type=Path, required=True, help="trait-heads-vN-outputs.npz from trait-export.")
+    command.add_argument("--out", type=Path, required=True, help="JSON file for the results.")
+    command.set_defaults(run=_run_trait_ranking)
+
+
+def _run_trait_ranking(arguments) -> None:
+    import json
+
+    import numpy as np
+
+    from sorghum_model.race_evaluation import GATE_COVERAGE
+    from sorghum_model.trait_ranking import ranking_check
+
+    photos, heads = _trait_photos_and_heads(arguments)
+    with np.load(arguments.outputs) as saved:
+        outputs = {key: saved[key] for key in saved.files}
+    # The app's floor (shared TraitNoiseSettings.minStateProbability), so the check reasons as the app does.
+    result = ranking_check(photos, heads, outputs, APP_TRAIT_NOISE_FLOOR, GATE_COVERAGE, RaceRuleSearchSettings())
+    arguments.out.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(result, indent=2))
 
 
 def _manifest_paths(manifests: list[Path] | None) -> list[Path]:

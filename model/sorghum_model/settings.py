@@ -463,3 +463,105 @@ class RaceGateSettings:
             raise ValueError("min_points_over_baseline must be in [0, 1)")
         if not 0 <= self.max_int8_accuracy_delta < 0.5:
             raise ValueError("max_int8_accuracy_delta must be in [0, 0.5)")
+
+
+@dataclass(frozen=True)
+class TraitLabelSettings:
+    """Which GRIN-labelled states a learned trait head outputs (T12, #35; `cultivar_traits`).
+
+    Attributes:
+        min_train_accessions_per_state: a state gets a head output only with at least this
+            many training accessions. Below it the output row is fitted to a handful of
+            accessions and its probability is noise; `shared/` gives such states the noise
+            floor instead. 20 is the race head's minimum (`RaceTrainingSettings`). It drops
+            grain colour 6 "Other" (14) and panicle 12 "Broom corn" (18). Initial guess.
+    """
+
+    min_train_accessions_per_state: int = 20
+
+    def __post_init__(self) -> None:
+        if self.min_train_accessions_per_state < 1:
+            raise ValueError("min_train_accessions_per_state must be at least 1")
+
+
+@dataclass(frozen=True)
+class TraitGateSettings:
+    """The R6 gate a learned trait head must pass on the untouched test split (ARCHITECTURE.md
+    risk R6: learned traits are added one at a time, each gated by held-out accuracy).
+
+    Set on 2026-10-30 before any trait head was scored, so the gate was not tuned to results.
+    Measured on the INT8 model with its validation-fitted temperature, the outputs the phones see.
+
+    Attributes:
+        min_accuracy: top-1 accuracy over the test photos with a state the head outputs. Naive
+            Bayes weighs each trait by its calibrated probabilities, so a weaker head is not
+            wrong, but a trait shown to the user for correction should be right most of the
+            time: 0.70 is an initial guess (team bar, ASSUMPTION - confirm).
+        min_points_over_baseline: accuracy must beat the better of the majority-state and
+            planting baselines by this much, so the head reads the trait rather than the
+            commonest state or the planting's board and light. 0.10, as the race gate.
+        min_macro_recall: mean per-state recall. A head can reach high accuracy on a trait
+            dominated by one state while never naming the others; 0.50 asks that it names the
+            average state at least half the time. Initial guess.
+        max_ece: expected calibration error after temperature scaling. Naive Bayes needs
+            honest probabilities (risk R4); 0.05 is about the race model's (0.050) and
+            well above the species head's (0.013). Initial guess.
+        max_int8_accuracy_delta: largest allowed |float - INT8| accuracy on test; the phones
+            run INT8. Same bar as `ExportSettings.max_quantization_accuracy_delta`.
+    """
+
+    min_accuracy: float = 0.70
+    min_points_over_baseline: float = 0.10
+    min_macro_recall: float = 0.50
+    max_ece: float = 0.05
+    max_int8_accuracy_delta: float = 0.02
+
+    def __post_init__(self) -> None:
+        if not 0 < self.min_accuracy <= 1 or not 0 < self.min_macro_recall <= 1:
+            raise ValueError("min_accuracy and min_macro_recall must be in (0, 1]")
+        if not 0 <= self.min_points_over_baseline < 1:
+            raise ValueError("min_points_over_baseline must be in [0, 1)")
+        if not 0 < self.max_ece < 1:
+            raise ValueError("max_ece must be in (0, 1)")
+        if not 0 <= self.max_int8_accuracy_delta < 0.5:
+            raise ValueError("max_int8_accuracy_delta must be in [0, 0.5)")
+
+
+@dataclass(frozen=True)
+class TraitTrainingSettings:
+    """Training schedule for the learned trait heads (T12, #35) on the traits-v2 backbone.
+
+    Same two phases as the race head (`train.fit_in_two_phases`). The defaults keep the
+    backbone frozen (`fine_tune_epochs = 0`), so the heads can sit next to the traits-v2
+    species head in one model without changing its outputs (ADR-0006). Fine-tuning is kept
+    only if it beats the frozen heads on validation (model/README.md, "Trait heads").
+
+    Attributes:
+        batch_size: as `RaceTrainingSettings.batch_size`.
+        head_epochs: frozen-backbone epochs; the best validation loss is kept. Initial guess.
+        fine_tune_epochs: 0 keeps the traits-v2 backbone; see above.
+        head_learning_rate: as `RaceTrainingSettings.head_learning_rate`.
+        fine_tune_learning_rate: 3e-5, the rate that did not overfit the race head; 1e-4 did.
+        dropout: as `RaceTrainingSettings.dropout`.
+        first_fine_tuned_layer: as `RaceTrainingSettings.first_fine_tuned_layer`.
+    """
+
+    batch_size: int = 32
+    head_epochs: int = 15
+    fine_tune_epochs: int = 0
+    head_learning_rate: float = 1e-3
+    fine_tune_learning_rate: float = 3e-5
+    dropout: float = 0.2
+    first_fine_tuned_layer: str | None = "block_12_expand"
+
+    def __post_init__(self) -> None:
+        if self.batch_size < 1:
+            raise ValueError("batch_size must be at least 1")
+        if self.head_epochs < 1 or self.fine_tune_epochs < 0:
+            raise ValueError("head_epochs must be >= 1 and fine_tune_epochs >= 0")
+        if not 0 < self.fine_tune_learning_rate <= self.head_learning_rate < 1:
+            raise ValueError("need 0 < fine_tune_learning_rate <= head_learning_rate < 1")
+        if not 0 <= self.dropout < 1:
+            raise ValueError("dropout must be in [0, 1)")
+        if self.first_fine_tuned_layer == "":
+            raise ValueError("first_fine_tuned_layer must be a layer name or None")

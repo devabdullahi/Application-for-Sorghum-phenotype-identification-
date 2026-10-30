@@ -262,6 +262,18 @@ class TfliteRunner:
             rows.append(self._interpreter.get_tensor(self._output["index"])[0].copy())
         return np.stack(rows)
 
+    def logits_of_every_output(self, images: np.ndarray) -> list[np.ndarray]:
+        """For a multi-head model: per output index (as the phones address heads), the logits
+        of (n, size, size, 3) uint8 images, one image at a time like on device."""
+        outputs = self._interpreter.get_output_details()
+        rows: list[list[np.ndarray]] = [[] for _ in outputs]
+        for image in images:
+            self._interpreter.set_tensor(self._input["index"], self._quantize(image)[np.newaxis])
+            self._interpreter.invoke()
+            for index, output in enumerate(outputs):
+                rows[index].append(self._interpreter.get_tensor(output["index"])[0].copy())
+        return [np.stack(output_rows) for output_rows in rows]
+
     def _quantize(self, image: np.ndarray) -> np.ndarray:
         # Same formula and rounding `shared/` applies from the metadata (see quantize_input).
         return quantize_input(image, self.input_quantization.scale, self.input_quantization.zero_point)

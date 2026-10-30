@@ -24,6 +24,7 @@ from sorghum_model.export import TfliteRunner, convert_to_int8
 from sorghum_model.manifest import sha256_of_file
 from sorghum_model.preprocessing import load_model_input
 from sorghum_model.race_evaluation import (
+    GATE_COVERAGE,
     RaceEvaluation,
     choose_answer_rule,
     evaluate_basic_races,
@@ -47,8 +48,7 @@ from sorghum_model.settings import (
 from sorghum_model.splits import Split
 from sorghum_model.train import SHUFFLE_SEED
 
-# The gate's coverage, and the second operating point #32 asks to report.
-GATE_COVERAGE = 0.80
+# The second operating point #32 asks to report (the gate's is race_evaluation.GATE_COVERAGE).
 SECOND_COVERAGE = 0.90
 
 
