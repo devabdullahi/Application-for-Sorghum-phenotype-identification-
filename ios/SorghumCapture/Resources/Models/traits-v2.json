@@ -1,0 +1,233 @@
+{
+  "backbone": "MobileNetV2 1.0 (ImageNet weights)",
+  "belowBar": false,
+  "createdOn": "2026-10-30",
+  "heads": {
+    "species": {
+      "classes": [
+        {
+          "group": "sorghum",
+          "id": "sorghum_bicolor"
+        },
+        {
+          "group": "lookAlike",
+          "id": "johnson_grass"
+        },
+        {
+          "group": "lookAlike",
+          "id": "maize"
+        },
+        {
+          "group": "lookAlike",
+          "id": "sugarcane"
+        },
+        {
+          "group": "lookAlike",
+          "id": "pearl_millet"
+        },
+        {
+          "group": "lookAlike",
+          "id": "finger_millet"
+        },
+        {
+          "group": "otherPlant",
+          "id": "other_grass"
+        },
+        {
+          "group": "otherPlant",
+          "id": "other_plant"
+        },
+        {
+          "group": "noPlant",
+          "id": "no_plant"
+        }
+      ],
+      "evaluation": {
+        "accuracy": 0.8649802890932983,
+        "eceAfterTemperature": 0.012994068475261486,
+        "eceBeforeTemperature": 0.05763208519535215,
+        "eceBins": 15,
+        "float": {
+          "accuracy": 0.8768068331143233,
+          "eceAfterTemperature": 0.010515037796774575,
+          "eceBeforeTemperature": 0.05404192218544766,
+          "eceBins": 15,
+          "perClassAccuracy": {
+            "finger_millet": 0.9516129032258065,
+            "johnson_grass": 0.8087071240105541,
+            "maize": 0.9244532803180915,
+            "no_plant": 0.88,
+            "other_grass": 0.934918648310388,
+            "other_plant": 0.9866666666666667,
+            "pearl_millet": 0.8181818181818182,
+            "sorghum_bicolor": 0.8519924098671727,
+            "sugarcane": 0.8514056224899599
+          },
+          "perClassPrecision": {
+            "finger_millet": 0.6210526315789474,
+            "johnson_grass": 0.7358943577430972,
+            "maize": 0.8072916666666666,
+            "no_plant": 0.7857142857142857,
+            "other_grass": 0.8507972665148064,
+            "other_plant": 1.0,
+            "pearl_millet": 0.9064748201438849,
+            "sorghum_bicolor": 0.9820647419072616,
+            "sugarcane": 0.7881040892193308
+          },
+          "perClassRecall": {
+            "finger_millet": 0.9516129032258065,
+            "johnson_grass": 0.8087071240105541,
+            "maize": 0.9244532803180915,
+            "no_plant": 0.88,
+            "other_grass": 0.934918648310388,
+            "other_plant": 0.9866666666666667,
+            "pearl_millet": 0.8181818181818182,
+            "sorghum_bicolor": 0.8519924098671727,
+            "sugarcane": 0.8514056224899599
+          },
+          "photos": 6088,
+          "sorghumThreshold": 0.2317732870578766,
+          "split": "test",
+          "temperature": 1.6985703110694885,
+          "testSorghumDecisionAccuracy": 0.9402102496714849,
+          "testSorghumPrecision": 0.9522102747909199,
+          "testSorghumRecall": 0.9074003795066413,
+          "validationSorghumDecisionAccuracy": 0.9452121606242887,
+          "validationSorghumPrecision": 0.966605504587156,
+          "validationSorghumRecall": 0.9145833333333333
+        },
+        "perClassAccuracy": {
+          "finger_millet": 0.9516129032258065,
+          "johnson_grass": 0.8258575197889182,
+          "maize": 0.9015904572564613,
+          "no_plant": 0.88,
+          "other_grass": 0.9236545682102628,
+          "other_plant": 0.99,
+          "pearl_millet": 0.8116883116883117,
+          "sorghum_bicolor": 0.8333965844402277,
+          "sugarcane": 0.8353413654618473
+        },
+        "perClassPrecision": {
+          "finger_millet": 0.6145833333333334,
+          "johnson_grass": 0.6917127071823205,
+          "maize": 0.8163816381638164,
+          "no_plant": 0.7189542483660131,
+          "other_grass": 0.8463302752293578,
+          "other_plant": 1.0,
+          "pearl_millet": 0.8992805755395683,
+          "sorghum_bicolor": 0.9803571428571428,
+          "sugarcane": 0.7563636363636363
+        },
+        "perClassRecall": {
+          "finger_millet": 0.9516129032258065,
+          "johnson_grass": 0.8258575197889182,
+          "maize": 0.9015904572564613,
+          "no_plant": 0.88,
+          "other_grass": 0.9236545682102628,
+          "other_plant": 0.99,
+          "pearl_millet": 0.8116883116883117,
+          "sorghum_bicolor": 0.8333965844402277,
+          "sugarcane": 0.8353413654618473
+        },
+        "photos": 6088,
+        "split": "test",
+        "testSorghumDecisionAccuracy": 0.9316688567674113,
+        "testSorghumPrecision": 0.9380181602842479,
+        "testSorghumRecall": 0.901707779886148,
+        "validationSorghumDecisionAccuracy": 0.9411477808486425,
+        "validationSorghumPrecision": 0.9554992764109985,
+        "validationSorghumRecall": 0.9170138888888889
+      },
+      "output": "logits",
+      "outputIndex": 0,
+      "quantizationParity": {
+        "converterTensorflowVersion": "2.17.1",
+        "floatAccuracy": 0.8768068331143233,
+        "int8Accuracy": 0.8649802890932983,
+        "loadsWithXnnpack": true,
+        "maxProbabilityDifference": 0.9486186504364014,
+        "meanProbabilityDifference": 0.00992310419678688,
+        "split": "test",
+        "top1Agreement": 0.959592641261498
+      },
+      "sorghumThreshold": 0.1993158906698227,
+      "temperature": 1.6851409077644353
+    }
+  },
+  "input": {
+    "channelOrder": "RGB",
+    "colorSpace": "sRGB",
+    "dtype": "uint8",
+    "heightPx": 224,
+    "pixelValueRange": [
+      0,
+      255
+    ],
+    "quantization": {
+      "scale": 1.0,
+      "zeroPoint": 0
+    },
+    "resize": "centerSquareCropThenBilinear",
+    "widthPx": 224
+  },
+  "modelFile": "traits-v2.tflite",
+  "modelVersion": 2,
+  "schemaVersion": 1,
+  "shipBar": {
+    "maxQuantizationAccuracyDelta": 0.02,
+    "minSorghumDecisionAccuracy": 0.9,
+    "problems": []
+  },
+  "trainingData": {
+    "imageManifests": {
+      "species-commons.csv": "854044c2308f4a8d170c4f3c95ef1c921bd5b741b3a5c29f6d6dbb7d29487c9c",
+      "species-gbif.csv": "b26e570a16b13264732ab940aceba63ac5a7d9d6eba2748a61a9bb4006c4079c",
+      "species-grainset-maize.csv": "3df75f872a6f82a2653096811a7a9371df9a0307248b127821f8270070dd0cd5",
+      "species-grainset-sorghum.csv": "ab3378e55412af5c740f03049319b8ae59f31ac87a0c61d981a6fe600a840ebf",
+      "species-inaturalist.csv": "ce0ed18904aed454dcd7df4239d582519f53ad505de998d8d3eee60ed4a97e17",
+      "species-sorghum-disease-2024.csv": "83183129495b790cbbf4ff60487594198a4eec3847e9cf81962ca694d5f9ecbf",
+      "species-sorghum-weed-2023.csv": "cb6e12966fae53df1c1422185d15fa1dbe4609165a950e98fe0562f7c8b857ee"
+    },
+    "licenses": [
+      "cc-by",
+      "cc-by-nc",
+      "cc-by-nc-sa",
+      "cc-by-sa",
+      "cc0"
+    ],
+    "modelFileSha256": "127239c4443b9bfbb47875ba703c698a1bce6da80609f5e387d6845cf8c24d51",
+    "nonCommercial": true,
+    "photosPerClassAndSplit": {
+      "finger_millet/test": 62,
+      "finger_millet/train": 276,
+      "finger_millet/validation": 68,
+      "johnson_grass/test": 758,
+      "johnson_grass/train": 3932,
+      "johnson_grass/validation": 580,
+      "maize/test": 1006,
+      "maize/train": 5058,
+      "maize/validation": 1041,
+      "no_plant/test": 125,
+      "no_plant/train": 765,
+      "no_plant/validation": 143,
+      "other_grass/test": 799,
+      "other_grass/train": 4444,
+      "other_grass/validation": 750,
+      "other_plant/test": 300,
+      "other_plant/train": 913,
+      "other_plant/validation": 228,
+      "pearl_millet/test": 154,
+      "pearl_millet/train": 866,
+      "pearl_millet/validation": 186,
+      "sorghum_bicolor/test": 2635,
+      "sorghum_bicolor/train": 12302,
+      "sorghum_bicolor/validation": 2880,
+      "sugarcane/test": 249,
+      "sugarcane/train": 1865,
+      "sugarcane/validation": 275
+    },
+    "splitManifestSha256": "7b920e28ff8c8278b06a4849776a90a1fc7d95013987c9290b73ab265fc2d0bb",
+    "splitSalt": "species-v1"
+  },
+  "traits": []
+}
