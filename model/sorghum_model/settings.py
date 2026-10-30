@@ -334,6 +334,45 @@ class RaceCrosswalkSettings:
 
 
 @dataclass(frozen=True)
+class CoreShortlistSettings:
+    """How many accessions `core-shortlist` proposes per basic race, and the seed to request.
+
+    Attributes:
+        development_per_race, test_per_race: the type-eval-v1 planning target (protocol 5.1):
+            100 accessions to train, validate and tune on, and 50 for the sealed test. At 50 per
+            race a per-race accuracy near 0.9 has a Wilson 95% interval of about +-0.09.
+        alternates_per_race: ranked spares for seed that fails to arrive or germinate. 30 (20%
+            of the core) is an initial guess; raise it once germination rates are known.
+        max_origin_share: the most of a race's core one origin country may take while other
+            origins still have candidates. 0.4 is an initial guess that keeps at least three
+            countries in every core and still lets Durra lean on Ethiopia and Sudan.
+        seeds_per_request: placeholder quantity per accession, GRIN's usual 100-seed packet. It
+            is enough to grow the plants for the panicle and glume views (protocol 7) and to
+            photograph grain. Replace with the genebank's own quantity when it answers.
+    """
+
+    development_per_race: int = 100
+    test_per_race: int = 50
+    alternates_per_race: int = 30
+    max_origin_share: float = 0.4
+    seeds_per_request: int = 100
+
+    def __post_init__(self) -> None:
+        if self.development_per_race < 1 or self.test_per_race < 1:
+            raise ValueError("development_per_race and test_per_race must be at least 1")
+        if self.alternates_per_race < 0:
+            raise ValueError("alternates_per_race must not be negative")
+        if not 0 < self.max_origin_share <= 1:
+            raise ValueError("max_origin_share must be in (0, 1]")
+        if not 1 <= self.seeds_per_request <= 10_000:
+            raise ValueError("seeds_per_request must be in [1, 10000]")
+
+    @property
+    def core_accessions_per_race(self) -> int:
+        return self.development_per_race + self.test_per_race
+
+
+@dataclass(frozen=True)
 class RaceEvaluationSettings:
     """When the race model returns a group of races, and when it answers "unrecognized".
 

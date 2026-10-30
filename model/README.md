@@ -292,6 +292,54 @@ What this means:
 - The sample is small and not random: Frontiers chose accessions for genomic race diversity. The
   intervals are wide. Treat the numbers as a warning about label noise, not as a precise rate.
 
+### Core accessions to request (T26, #52, 2026-10-30)
+
+`core-shortlist` proposes the seed to request for the type test (`type-eval-v1`,
+`docs/architecture/type-evaluation-protocol.md`): per basic race, 150 core accessions (100
+development and 50 test) plus 30 alternates (`core_shortlist.py`, `CoreShortlistSettings`).
+
+- **Pool:** every accession on GRIN's race study pages whose race observations all name one basic
+  race (12,629 of 22,314). Excluded with a reason: a second source names another race
+  (Frontiers, `second-source-disagrees`), or no study page shows an orderable seed lot
+  (`no-orderable-seed`, from the AVAILABILITY column on the day the pages were cached).
+- **Ranking:** label confidence first (`corroborated` by Frontiers, then `repeated` in two or more
+  GRIN plantings, then `single`), then how many catalogue traits GRIN has states for, then a fixed
+  pseudo-random order. One country may fill at most 40% of a core while other countries have
+  candidates.
+- **Test-eligible** (protocol 5.2-5.3): a confirmed label (`corroborated` or `repeated`) and no
+  GRIN photo in `accession_split` train or validation. The core swaps in eligible accessions
+  where it can. A gap is reported, never filled with single-observation labels.
+- **Seed request (placeholder):** 100 seeds per core and alternate accession, GRIN's usual
+  packet. Replace it with the genebank's own quantity.
+
+```bash
+uv run sorghum-model core-shortlist   # reads cached GRIN pages and the T24 crosswalk; about 20 s
+```
+
+Output: `manifests/core-accession-shortlist.csv` (900 rows: race, rank, role, test-eligible,
+accession, ICRISAT number, name, origin, label tier, GRIN race values, Frontiers race,
+descriptor traits, GRIN split, seed quantity, GRIN URL) and `-summary.txt`:
+
+| Race | GRIN pool | candidates | core / alternates | confirmed labels in pool | test-eligible in core (need 50) | shortfall |
+|---|---|---|---|---|---|---|
+| Bicolor | 855 | 848 | 150 / 30 | 7 | 4 | **test short by 46** |
+| Guinea | 3,014 | 3,008 | 150 / 30 | 161 | 72 | none |
+| Caudatum | 4,285 | 4,274 | 150 / 30 | 47 | 19 | **test short by 31** |
+| Kafir | 673 | 667 | 150 / 30 | 0 | 0 | **test short by 50** |
+| Durra | 3,802 | 3,789 | 150 / 30 | 86 | 50 | none |
+
+Seed is not the limit: under 1.5% of the pool has no orderable lot. Confirmed labels are the limit.
+Kafir has no accession with two agreeing race observations, and Bicolor has seven. The core of
+every race is full for development. Three things can close the test gap, and none is done yet:
+
+1. a sorghum race specialist names the race of the grown plants without seeing the GRIN label
+   (`expert-verified`, protocol 5.2). This is the only route that works for Kafir today;
+2. ICRISAT passport races from Genesys as a second source, which needs a Genesys login;
+3. requesting extra Bicolor, Caudatum and Kafir alternates, so that the specialist's checks still
+   leave 50 per race.
+
+Until the gap is closed, protocol 5.1 holds every race's test count at the smallest race's.
+
 ### Race model plan (T4, #24)
 
 Trained and scored once on test as race-v1 (T9, #32); results below. The plan as followed:

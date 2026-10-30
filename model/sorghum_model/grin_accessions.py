@@ -15,6 +15,7 @@ import html
 import re
 import urllib.parse
 from dataclasses import dataclass
+from enum import Enum
 
 from sorghum_model.grin import GRIN_BASE_URL, StudyTableParser
 
@@ -176,3 +177,69 @@ def _detail_id(links: list[str]) -> str:
 def _text(fragment: str) -> str:
     return html.unescape(re.sub(r"<[^>]+>", "", fragment))
 
+
+
+class StudyAvailability(Enum):
+    """What a study page's AVAILABILITY cell says about the accession's seed, on the day fetched.
+
+    GRIN shows a cart button when the study's own seed lot can be ordered, "*Not Available"
+    when that lot cannot but another lot of the accession can, and "Not Available" (or
+    "Historic") when none can.
+    """
+
+    ORDERABLE = "orderable"
+    OTHER_LOT_ORDERABLE = "other-lot-orderable"
+    NOT_AVAILABLE = "not-available"
+
+    @property
+    def is_orderable(self) -> bool:
+        return self is not StudyAvailability.NOT_AVAILABLE
+
+
+@dataclass(frozen=True)
+class StudyRosterRow:
+    """The passport columns of one accession row of a GRIN study page (`methodaccession`)."""
+
+    detail_id: str
+    accession: str
+    name: str
+    taxon: str
+    origin: str
+    availability: StudyAvailability
+
+
+def parse_study_roster(page_html: str) -> list[StudyRosterRow]:
+    """The accession rows of a GRIN study page with their name, origin and availability."""
+    parser = StudyTableParser()
+    parser.feed(page_html)
+    if not parser.rows:
+        return []
+    header, *rows = parser.rows
+    wanted = ("ID", "ACCESSION", "NAME", "TAXONOMY", "ORIGIN", "AVAILABILITY")
+    if any(column not in header for column in wanted):
+        raise ValueError(f"study page has no {', '.join(wanted)} columns; the page layout changed")
+    column = {name: header.index(name) for name in wanted}
+    roster = []
+    for row in rows:
+        if len(row) < len(header):
+            continue
+        roster.append(
+            StudyRosterRow(
+                detail_id=row[column["ID"]],
+                accession=" ".join(row[column["ACCESSION"]].split()),
+                name=row[column["NAME"]],
+                taxon=row[column["TAXONOMY"]],
+                origin=row[column["ORIGIN"]],
+                availability=_study_availability(row[column["AVAILABILITY"]]),
+            )
+        )
+    return roster
+
+
+def _study_availability(cell_text: str) -> StudyAvailability:
+    text = cell_text.strip()
+    if not text:
+        return StudyAvailability.ORDERABLE  # the cell holds only the cart button
+    if text.startswith("*"):
+        return StudyAvailability.OTHER_LOT_ORDERABLE
+    return StudyAvailability.NOT_AVAILABLE
