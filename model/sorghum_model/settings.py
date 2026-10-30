@@ -220,3 +220,26 @@ class DownloadSettings:
     def __post_init__(self) -> None:
         if self.checkpoint_every_photos < 1:
             raise ValueError("checkpoint_every_photos must be at least 1")
+
+
+@dataclass(frozen=True)
+class GrinDescriptorSettings:
+    """How `grin-descriptors` talks to GRIN-Global while `grin-download` uses the same server.
+
+    Attributes:
+        seconds_between_requests: this command's own pace. Six times slower than the shared
+            one-per-second pace, so the image download running at the same time is not slowed.
+        study_page_timeout_seconds: socket read timeout for descriptor and study pages. GRIN
+            builds each page in full before sending it; the 60 s default timed out on
+            2026-10-30, and SEEDWEIGHT's single study lists about 37,000 accessions in one
+            page. Ten minutes is an initial guess with room for that page.
+    """
+
+    seconds_between_requests: float = 6.0
+    study_page_timeout_seconds: float = 600.0
+
+    def __post_init__(self) -> None:
+        if self.seconds_between_requests < 1:
+            raise ValueError("seconds_between_requests must be at least 1 (GRIN asks for polite clients)")
+        if not 60 <= self.study_page_timeout_seconds <= 3600:
+            raise ValueError("study_page_timeout_seconds must be in [60, 3600]")

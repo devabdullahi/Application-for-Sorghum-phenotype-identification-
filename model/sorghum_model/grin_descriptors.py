@@ -17,11 +17,11 @@ import csv
 import os
 import re
 import urllib.parse
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
-from sorghum_model.downloads import RequestPacer, get_text
+from sorghum_model.downloads import RequestPacer
 from sorghum_model.grin import GRIN_BASE_URL, StudyTableParser
 
 
@@ -304,19 +304,54 @@ def combine_panicle_observations(observations: Iterable[DescriptorObservation]) 
 
 
 def fetch_observations(
-    accessions: set[str], pacer: RequestPacer, descriptors: Iterable[GrinDescriptor] = DESCRIPTORS
+    accessions: set[str],
+    fetch_page: Callable[[str], str],
+    descriptors: Iterable[GrinDescriptor] = DESCRIPTORS,
 ) -> Iterator[DescriptorObservation]:
-    """Fetches every study page of every descriptor, yielding observations for `accessions`.
+    """Reads every study page of every descriptor, yielding observations for `accessions`.
 
-    `pacer` spaces this process's requests; pass a slower one than the default when an image
-    download is running against the same server.
+    `fetch_page` returns a page's HTML for a URL; pass a `CachedPageFetcher` so a rerun after
+    a failure skips the pages it already has.
     """
     for descriptor in descriptors:
-        pacer.wait()
         page_url = f"{GRIN_BASE_URL}descriptordetail.aspx?id={descriptor.descriptor_id}"
-        for study, study_url in parse_descriptor_studies(get_text(page_url), descriptor.descriptor_id):
-            pacer.wait()
-            yield from parse_observations(get_text(study_url), descriptor, study, study_url, accessions)
+        for study, study_url in parse_descriptor_studies(fetch_page(page_url), descriptor.descriptor_id):
+            yield from parse_observations(fetch_page(study_url), descriptor, study, study_url, accessions)
+
+
+class CachedPageFetcher:
+    """Fetches GRIN pages through a folder of saved copies, one file per URL.
+
+    A page is saved only once it has been read in full (written to a temporary file, then
+    renamed), so an interrupted run keeps every finished page and the rerun fetches only the
+    rest. Pages are kept as HTML rather than parsed rows, so a corrected mapping table is
+    applied by rerunning without fetching anything. Single-threaded, like the downloaders.
+    """
+
+    def __init__(self, cache_dir: Path, fetch: Callable[[str], str], pacer: RequestPacer) -> None:
+        self._cache_dir = cache_dir
+        self._fetch = fetch
+        self._pacer = pacer
+
+    def __call__(self, url: str) -> str:
+        cached = self._cache_dir / cache_file_name(url)
+        if cached.exists():
+            return cached.read_text(encoding="utf-8")
+        self._pacer.wait()
+        page = self._fetch(url)
+        self._cache_dir.mkdir(parents=True, exist_ok=True)
+        temporary = cached.with_name(f"{cached.name}.{os.getpid()}.tmp")
+        temporary.write_text(page, encoding="utf-8")
+        temporary.replace(cached)
+        return page
+
+
+def cache_file_name(url: str) -> str:
+    """A stable, readable file name for a GRIN page URL ("methodaccession_id1-69065_id2-21001.html")."""
+    parsed = urllib.parse.urlparse(url)
+    page = Path(parsed.path).name.removesuffix(".aspx")
+    query = "_".join(f"{key}-{value}" for key, value in urllib.parse.parse_qsl(parsed.query))
+    return f"{page}_{query}.html" if query else f"{page}.html"
 
 
 def write_observations(observations: list[DescriptorObservation], path: Path) -> None:
