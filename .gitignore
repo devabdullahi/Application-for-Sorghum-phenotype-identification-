@@ -14,3 +14,5 @@ build/
 .cxx
 local.properties
 bugreport-*.zip
+**/.claude/skills/*/config.json
+__pycache__/
