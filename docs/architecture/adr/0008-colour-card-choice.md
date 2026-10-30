@@ -19,11 +19,11 @@ Fit method (PlantCV `transform` module, read 2026-10-23):
 
 ## Decision
 - **Card: ColorChecker Classic Mini** (option 1), post-November 2014 formulation.
-- **Reference values:** L\*a\*b\* (D50) from X-Rite (2016), "New color specifications for ColorChecker SG and Classic Charts", as tabulated in colour-science (`DATA_COLORCHECKER24_AFTER_NOV2014_CIE_LAB`). They are stored once in `ColorCheckerClassicMini.referenceLabD50`; linear sRGB targets are derived in code (Bradford D50 -> D65, IEC 61966-2-1 matrix, Lindbloom's published matrices). The Wikipedia sRGB table is not used: it is the pre-2014 pigment set.
+- **Reference values:** L\*a\*b\* (D50) from X-Rite (2016), "New color specifications for ColorChecker SG and Classic Charts", as tabulated in colour-science's "ColorChecker24 - After November 2014" dataset (`DATA_COLORCHECKER24_AFTER_NOV2014`). They are stored once in `ColorCheckerClassicMini.referenceLabD50`; linear sRGB targets are derived in code (Bradford D50 -> D65, IEC 61966-2-1 matrix, Lindbloom's published matrices). The Wikipedia sRGB table is not used: it is the pre-2014 pigment set.
 - **Fit:** PlantCV's affine model (3x4, least squares on [R G B 1]), but **in linear sRGB**, not on gamma-encoded values. Camera white balance, exposure and channel cross-talk are linear in linear light, so a 3x4 matrix can undo them there; on encoded values it cannot. The offset absorbs flare and black level. The polynomial model was rejected: 24 patches give too few points for a 9-term fit to stay stable outside the card's colours.
 - **Fit quality:** mean CIE76 ΔE (D50) between corrected and reference patches. Above `ColourCardSettings.maxMeanDeltaE` (6, initial guess) the photo is rejected.
 - **Detection:** the card lies in a fixed slot on the board. The capture layout passes that slot as a `NormalizedRect`; `calibration` finds the regular 4 x 6 grid of colour edges inside it with two 1-D searches, samples the middle of each patch, rejects non-uniform patches, and tries the card's four 90° orientations, keeping the one with the lowest fit residual. No orientation mark is needed.
-- **Scale:** pixels per mm = measured patch pitch / `ColorCheckerClassicMini.PATCH_PITCH_MM` (14.3 mm, from the 57 x 86 mm chip area / 4 x 6 patches).
+- **Scale:** pixels per mm = measured patch pitch / `ColorCheckerClassicMini.PATCH_PITCH_MM` (14.3 mm, the rounded mean of 57 / 4 = 14.25 mm and 86 / 6 = 14.33 mm from the 57 x 86 mm chip area; see "ASSUMPTION — confirm").
 
 ## Consequences
 - Every board needs a Classic Mini in a marked slot (one card per team).
@@ -34,6 +34,6 @@ Fit method (PlantCV `transform` module, read 2026-10-23):
 
 ## ASSUMPTION — confirm
 - The Classic Mini is acceptable to field teams (cost, availability), and a card on every board is acceptable (also listed in ARCHITECTURE.md §9).
-- `PATCH_PITCH_MM = 14.3` is derived from the published chip area, not measured. Measure the team's cards with a ruler (centre of patch 1 to centre of patch 6, divide by 5) before trusting any mm trait.
+- `PATCH_PITCH_MM = 14.3` is derived from the published chip area, not measured, and the area does not settle it: 57 mm / 4 = 14.25 mm but 86 mm / 6 = 14.33 mm, so the published dimensions disagree with square patches on a single pitch. A physical card measurement is required. Measure the team's cards with a ruler (centre of patch 1 to centre of patch 6, divide by 5) before trusting any mm trait.
 - The capture layout can reserve a card slot on the board and pass it to `calibration`.
 - All `ColourCardSettings` thresholds are initial guesses until tuned on real board photos.

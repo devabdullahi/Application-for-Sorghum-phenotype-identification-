@@ -45,6 +45,20 @@ def ship_bar_problems(
     return problems
 
 
+def converter_version_problems(tensorflow_version: str, settings: ExportSettings) -> list[str]:
+    """A problem when the converting TensorFlow is not the phones' runtime version.
+
+    Only major.minor is compared: patch releases do not change the converter's kernels.
+    """
+    major_minor = ".".join(tensorflow_version.split(".")[:2])
+    if major_minor == settings.converter_tensorflow_version:
+        return []
+    return [
+        f"converted with TensorFlow {tensorflow_version}, but the phones run TensorFlow Lite "
+        f"{settings.converter_tensorflow_version}; export from the `export` environment"
+    ]
+
+
 def enforce_ship_bar(problems: list[str], allow_below_bar: bool) -> bool:
     """Raises BelowShipBarError unless the bar is met or explicitly waived.
 

@@ -16,7 +16,7 @@ import com.sorghum.capture.guidance.GuidanceState
 import com.sorghum.capture.platform.BundledSpeciesModel
 import com.sorghum.capture.quality.QUALITY_CHECK_LONG_SIDE_PIXELS
 import com.sorghum.capture.quality.RejectionReason
-import com.sorghum.capture.sample.SampleCoverage
+import com.sorghum.segmentation.SampleCoverage
 import com.sorghum.session.CaptureFlow
 import com.sorghum.session.CaptureSettings
 import com.sorghum.session.CaptureState

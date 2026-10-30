@@ -9,7 +9,7 @@ Decisions are recorded in [`adr/`](adr/). Phase 1 (capture + quality check) is b
 
 The app identifies a sorghum cultivar **offline, on the phone**, in three steps:
 
-0. **Check it is sorghum** with a small image classifier (MobileNetV3-Small species head). Non-sorghum samples stop here with "not sorghum" ([ADR-0006](adr/0006-species-gate-before-cultivar.md)).
+0. **Check it is sorghum** with a small image classifier (MobileNetV2 species head, [ADR-0010](adr/0010-mobilenetv2-backbone-tf217-export.md)). Non-sorghum samples stop here with "not sorghum" ([ADR-0006](adr/0006-species-gate-before-cultivar.md)).
 1. **Read visible traits** from guided photos of a leaf, panicle or grain sample on a plain board with a colour card. Each trait is a standard IBPGR/ICRISAT descriptor and comes out as a **probability over its states**.
 2. **Reason over traits** with a naive Bayes network whose tables come from genebank data (Genesys), and return the best matches with the traits that drove them, or "unrecognized".
 
@@ -100,7 +100,7 @@ Rules:
 | --- | --- | --- |
 | `imaging` | `PixelImage(width, height, rgb: ByteArray)`, `NormalizedRect`, `PixelRect`, crop/downscale/rotate on `PixelImage` | `imaging/ImageRects.kt` (rect types); Bitmap code in `camera/FrameCropper.kt` to be replaced |
 | `capture` | Target frame, frame mapping, tilt → guidance state, steady-hold timer, photo quality check | `frame/`, `guidance/`, `quality/` |
-| `segmentation` | Plant mask by excess-green (leaves); background-contrast mask vs plain board (panicles, grain); sample coverage + edge touch | `sample/GreenCoverage.kt`; contrast mask is new |
+| `segmentation` | Plant mask by excess-green (leaves); background-contrast mask vs plain board (panicles, grain); sample coverage + edge touch | `segmentation/`: `GreenCoverage.kt`, `ContrastMask.kt`, `detectSampleMask` in `SampleDetection.kt`; capture flow still calls the green detector only |
 | `species` | Map the model's species head to `SpeciesEstimate` (sorghum / named look-alike / other plant / no plant); decide continue, "not sorghum", or "unsure — retake" against a calibrated threshold from model metadata | New (ADR-0006) |
 | `calibration` | Find colour card (ColorChecker Classic Mini in a board slot), fit affine colour correction in linear sRGB to known patch values, pixels-per-mm from patch pitch ([ADR-0008](adr/0008-colour-card-choice.md)) | `shared/calibration/` (PlantCV affine method, linear light) |
 | `traits` | Trait catalogue (descriptor id, states, photo type, method); `TraitEstimate` (distribution over states, or value + uncertainty for continuous traits); measured readers (midrib colour, pigmentation, glume colour, grain colour, lustre, seed size); mapping of `ImageModel` trait heads to `TraitEstimate` | New |
@@ -189,7 +189,7 @@ sequenceDiagram
 
 | Asset | Produced by | Shipped as | Versioning |
 | --- | --- | --- | --- |
-| Trait model | `model/` training (MobileNetV3-Small backbone, per-trait heads), INT8 post-training quantization | `traits-vN.tflite` + `traits-vN.json` (input spec, trait ids, state order, calibration temps) | Model and metadata share N; `shared/` refuses a mismatched trait catalogue. |
+| Trait model | `model/` training (MobileNetV2 backbone, per-trait heads), INT8 post-training quantization with the TF 2.17 converter (ADR-0010) | `traits-vN.tflite` + `traits-vN.json` (input spec, trait ids, state order, calibration temps) | Model and metadata share N; `shared/` refuses a mismatched trait catalogue. |
 | Cultivar tables | `model/` scripts from Genesys ICRISAT characterization data (CC BY-SA) + noise floor | `cultivars-vN.json` | Schema version + data version; attribution kept in file. |
 | Test fixtures | `model/` | `shared/src/commonTest/resources` | Same images + expected trait outputs used by Android and iOS parity tests. |
 
@@ -237,7 +237,7 @@ Today: pure logic (`frame/ guidance/ quality/ sample/`, `session/CaptureFlow`) i
 1. **Create `shared/`** and move the pure packages unchanged (`frame`, `guidance`, `quality`, `sample`), replacing `Bitmap`/`Float` platform touch points with `PixelImage`. Move their JVM tests to `commonTest`. Android app depends on `shared/`; behaviour unchanged.
 2. **Move session logic** out of `CaptureViewModel` into `shared/session`; Android ViewModel becomes a thin adapter.
 3. **iOS on shared:** `iosApp/` consumes the XCFramework; delete the Swift ports of `GreenCoverage`, `TargetFrame`, `SampleStatus` ([ADR-0005](adr/0005-swift-port-is-temporary.md)). Keep the Swift camera, preview and pinch-zoom code as the iOS adapter. Benchmark live analysis on a real iPhone before deleting the port.
-4. **Species gate:** `model/` trains MobileNetV3-Small with a species head; `ImageModel` implemented with LiteRT on iOS first, then Android; `shared/species` decides. First user-visible identification on iPhone: "sorghum / not sorghum".
+4. **Species gate:** `model/` trains MobileNetV2 with a species head; `ImageModel` implemented with LiteRT on iOS first, then Android; `shared/species` decides. First user-visible identification on iPhone: "sorghum / not sorghum".
 5. **Calibration** (colour card + mm scale), then **contrast mask** for panicle/grain.
 6. **Measured traits + reasoning** with a first Genesys table — first cultivar result.
 7. **Learned traits** as extra heads on the same backbone, one at a time.

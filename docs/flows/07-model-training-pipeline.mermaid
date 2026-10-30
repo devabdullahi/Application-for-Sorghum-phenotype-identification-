@@ -10,7 +10,7 @@ flowchart LR
     OPEN -- "import-folder" --> MAN
     TEAM -- "import-folder" --> MAN
     MAN -- "split (by group, never by image)" --> SPL["splits/species-v1.csv<br/>(committed)"]
-    SPL -- "train" --> KER["Keras MobileNetV3-Small<br/>frozen head, then fine-tune"]
+    SPL -- "train" --> KER["Keras MobileNetV2<br/>frozen head, then fine-tune from block 12"]
     KER -- "export" --> Q["INT8 TFLite<br/>uint8 in, float logits out"]
     Q --> PAR["float vs INT8 parity<br/>on test split"]
     Q --> CAL["temperature + sorghum threshold<br/>on validation (INT8 outputs)"]

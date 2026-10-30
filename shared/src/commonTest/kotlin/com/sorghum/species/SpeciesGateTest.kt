@@ -5,7 +5,7 @@ import com.sorghum.imaging.uniformImage
 import kotlin.math.ln
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** Class order in [DEFAULT_CLASSES]: sorghum, johnson grass, maize, other plant, no plant. */
@@ -17,6 +17,11 @@ class SpeciesGateTest {
     @Test
     fun `sorghum at the threshold continues`() {
         assertEquals(SpeciesCheck.Sorghum(0.8f), decide(0.8f, 0.05f, 0.05f, 0.05f, 0.05f))
+    }
+
+    @Test
+    fun `sorghum just above the threshold continues`() {
+        assertEquals(SpeciesCheck.Sorghum(0.81f), decide(0.81f, 0.04f, 0.05f, 0.05f, 0.05f))
     }
 
     @Test
@@ -34,10 +39,25 @@ class SpeciesGateTest {
     }
 
     @Test
+    fun `look-alike exactly at the naming level is named`() {
+        val check = decide(0.1f, 0.2f, 0.6f, 0.05f, 0.05f)
+
+        assertEquals("maize", (check as SpeciesCheck.NotSorghum).lookAlikeClassId)
+    }
+
+    @Test
     fun `look-alike just below the naming level is not named`() {
         val check = decide(0.1f, 0.25f, 0.55f, 0.05f, 0.05f)
 
         assertEquals(null, (check as SpeciesCheck.NotSorghum).lookAlikeClassId)
+    }
+
+    @Test
+    fun `not sorghum exactly at the confidence level is said`() {
+        // 1 - P(sorghum) = 0.7, the minimum; maize at 0.5 is too unsure to be named.
+        val check = decide(0.3f, 0.0f, 0.5f, 0.1f, 0.1f)
+
+        assertEquals(SpeciesCheck.NotSorghum(lookAlikeClassId = null, sorghumProbability = 0.3f), check)
     }
 
     @Test
@@ -58,6 +78,11 @@ class SpeciesGateTest {
     @Test
     fun `confident empty board is no plant`() {
         assertEquals(SpeciesCheck.NoPlant, decide(0.05f, 0.05f, 0.05f, 0.05f, 0.8f))
+    }
+
+    @Test
+    fun `empty board exactly at the no-plant level is no plant`() {
+        assertEquals(SpeciesCheck.NoPlant, decide(0.1f, 0.1f, 0.1f, 0.1f, 0.6f))
     }
 
     @Test
@@ -105,11 +130,69 @@ class SpeciesGateTest {
     }
 
     @Test
-    fun `gate refuses a model whose head size does not match the classes`() {
-        val gate = SpeciesGate(metadata, { listOf(floatArrayOf(1f, 2f)) }, settings)
+    fun `too few logits leave the photo unchecked`() {
+        val gate = SpeciesGate(metadata, { listOf(floatArrayOf(5f, 0f, 0f, 0f)) }, settings)
 
-        assertFailsWith<IllegalStateException> { gate.check(uniformImage(10, 10, Rgb(0, 0, 0))) }
+        assertEquals(unavailable(SpeciesUnavailableReason.WRONG_LOGIT_COUNT), gate.check(anyPhoto))
     }
+
+    @Test
+    fun `too many logits leave the photo unchecked`() {
+        val gate = SpeciesGate(metadata, { listOf(floatArrayOf(5f, 0f, 0f, 0f, 0f, 0f)) }, settings)
+
+        assertEquals(unavailable(SpeciesUnavailableReason.WRONG_LOGIT_COUNT), gate.check(anyPhoto))
+    }
+
+    @Test
+    fun `no outputs leave the photo unchecked`() {
+        // What both platform runners return after an interpreter error.
+        val gate = SpeciesGate(metadata, { emptyList() }, settings)
+
+        assertEquals(unavailable(SpeciesUnavailableReason.MISSING_SPECIES_OUTPUT), gate.check(anyPhoto))
+    }
+
+    @Test
+    fun `fewer outputs than the species index leave the photo unchecked`() {
+        val secondOutput = parseModelMetadata(metadataJson(temperature = 1f, outputIndex = 1))
+        val gate = SpeciesGate(secondOutput, { listOf(floatArrayOf(5f, 0f, 0f, 0f, 0f)) }, settings)
+
+        assertEquals(unavailable(SpeciesUnavailableReason.MISSING_SPECIES_OUTPUT), gate.check(anyPhoto))
+    }
+
+    @Test
+    fun `a NaN logit leaves the photo unchecked`() {
+        val gate = SpeciesGate(metadata, { listOf(floatArrayOf(Float.NaN, 0f, 0f, 0f, 0f)) }, settings)
+
+        assertEquals(unavailable(SpeciesUnavailableReason.NON_FINITE_LOGITS), gate.check(anyPhoto))
+    }
+
+    @Test
+    fun `an infinite logit leaves the photo unchecked`() {
+        val gate = SpeciesGate(metadata, { listOf(floatArrayOf(5f, 0f, Float.NEGATIVE_INFINITY, 0f, 0f)) }, settings)
+
+        assertEquals(unavailable(SpeciesUnavailableReason.NON_FINITE_LOGITS), gate.check(anyPhoto))
+    }
+
+    @Test
+    fun `the species head is read at its output index`() {
+        val secondOutput = parseModelMetadata(metadataJson(temperature = 1f, outputIndex = 1))
+        val gate = SpeciesGate(secondOutput, { listOf(floatArrayOf(0f), floatArrayOf(5f, 0f, 0f, 0f, 0f)) }, settings)
+
+        assertTrue(gate.check(anyPhoto) is SpeciesCheck.Sorghum)
+    }
+
+    @Test
+    fun `only sorghum and an unchecked photo go on to cultivar matching`() {
+        assertTrue(SpeciesCheck.Sorghum(0.9f).allowsCultivarMatching)
+        assertTrue(SpeciesCheck.Unavailable(SpeciesUnavailableReason.NO_MODEL).allowsCultivarMatching)
+        assertFalse(SpeciesCheck.Unsure(0.5f).allowsCultivarMatching)
+        assertFalse(SpeciesCheck.NoPlant.allowsCultivarMatching)
+        assertFalse(SpeciesCheck.NotSorghum(lookAlikeClassId = "maize", sorghumProbability = 0.1f).allowsCultivarMatching)
+    }
+
+    private val anyPhoto = uniformImage(10, 10, Rgb(0, 0, 0))
+
+    private fun unavailable(reason: SpeciesUnavailableReason) = SpeciesCheck.Unavailable(reason)
 
     private fun decide(vararg probabilities: Float) = decideSpecies(probabilities, metadata, settings)
 }

@@ -1,8 +1,8 @@
 package com.sorghum.traits
 
+import com.sorghum.imaging.PhotoType
 import kotlin.math.abs
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
@@ -62,14 +62,17 @@ class ContinuousTraitEstimateTest {
 
     @Test
     fun `middle bins take the mass between their edges`() {
+        // Edges 2.0 g and 3.0 g sit one standard deviation either side of 2.5 g, so the middle
+        // bin holds P(|Z| < 1) = 0.6826895 and each outer bin P(Z > 1) = 0.1586553, before
+        // the floor mixes in: p * (1 - 3 * 0.01) + 0.01.
         val seedWeight = TraitCatalogue.HUNDRED_SEED_WEIGHT
-        val edges = seedWeight.continuousBins!!.upperEdges
-        val middle = (edges[0] + edges[1]) / 2
-        val measured = ContinuousTraitEstimate(seedWeight.id, value = middle, standardDeviation = 0.05, unit = MeasurementUnit.GRAMS)
+        val measured = ContinuousTraitEstimate(seedWeight.id, value = 2.5, standardDeviation = 0.5, unit = MeasurementUnit.GRAMS)
 
         val estimate = measured.toTraitEstimate(seedWeight, noise)
 
-        assertEquals(seedWeight.states[1].code, estimate.probabilities.maxBy { it.value }.key)
+        assertClose(0.6826895 * 0.97 + 0.01, estimate.probabilityOf("5"), 1e-6)
+        assertClose(0.1586553 * 0.97 + 0.01, estimate.probabilityOf("3"), 1e-6)
+        assertClose(0.1586553 * 0.97 + 0.01, estimate.probabilityOf("7"), 1e-6)
     }
 
     @Test

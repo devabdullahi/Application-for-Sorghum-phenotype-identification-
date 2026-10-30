@@ -10,12 +10,13 @@ import com.sorghum.capture.quality.PhotoSource
 import com.sorghum.capture.quality.QualitySettings
 import com.sorghum.capture.quality.RejectionReason
 import com.sorghum.capture.quality.checkPhotoQuality
-import com.sorghum.capture.sample.GreenDetectionSettings
-import com.sorghum.capture.sample.SampleCoverage
-import com.sorghum.capture.sample.measureSampleCoverage
 import com.sorghum.imaging.PixelImage
+import com.sorghum.segmentation.GreenDetectionSettings
+import com.sorghum.segmentation.SampleCoverage
+import com.sorghum.segmentation.measureSampleCoverage
 import com.sorghum.species.SpeciesCheck
 import com.sorghum.species.SpeciesGate
+import com.sorghum.species.SpeciesUnavailableReason
 
 /** Everything the capture screen can show. Exactly one is active at a time. */
 sealed interface CaptureState {
@@ -81,6 +82,14 @@ class CaptureFlow(val settings: CaptureSettings, private val speciesGate: Specie
     var state: CaptureState = CaptureState.Guiding(guidance = null)
         private set
 
+    /**
+     * Why live capture cannot run ([CaptureState.CameraUnavailable] or
+     * [CaptureState.LevelSensorUnavailable]), or null while it works. Library photos need
+     * neither the camera nor the level sensor, so they stay available, and [retake] returns
+     * here instead of to a live guidance that would never start.
+     */
+    private var liveCaptureUnavailable: CaptureState? = null
+
     /** @param timestampMillis from a monotonic clock. */
     fun onTiltChanged(tilt: DeviceTilt, timestampMillis: Long) {
         latestTilt = tilt
@@ -109,6 +118,20 @@ class CaptureFlow(val settings: CaptureSettings, private val speciesGate: Specie
     }
 
     /**
+     * Moves to [CaptureState.CheckingPhoto] for a photo picked from the library and returns true
+     * if it should be checked now. Unlike [startCapture] this also works when the camera or the
+     * level sensor is unavailable (for example on the iOS simulator), since a library photo
+     * needs neither. Returns false while another photo is being checked or a result is showing.
+     */
+    fun startLibraryCheck(): Boolean {
+        val isWaitingForPhoto = state is CaptureState.Guiding ||
+            (liveCaptureUnavailable != null && state == liveCaptureUnavailable)
+        if (!isWaitingForPhoto) return false
+        state = CaptureState.CheckingPhoto
+        return true
+    }
+
+    /**
      * Checks a captured photo, cropped to the target frame and scaled so its longer side is
      * [com.sorghum.capture.quality.QUALITY_CHECK_LONG_SIDE_PIXELS]. Returns the rejection
      * reason, or null if the photo is acceptable. [source] decides which checks apply (see
@@ -122,24 +145,22 @@ class CaptureFlow(val settings: CaptureSettings, private val speciesGate: Specie
      * cropped to the target frame at the quality-check size; the gate makes the model input.
      * Call off the main thread, after [checkPhoto] accepted the photo.
      *
-     * A model that fails at run time (wrong output count or size) gives
-     * [SpeciesCheck.Unavailable]: the photo is reported as not checked, never guessed, and the
-     * failure does not crash the app through the Swift bridge.
+     * Without a model the result is [SpeciesCheck.Unavailable] with
+     * [SpeciesUnavailableReason.NO_MODEL]; a model that fails at run time gives
+     * [SpeciesCheck.Unavailable] with its reason. Either way the photo is reported as not
+     * checked, never guessed.
      */
-    fun checkSpecies(image: PixelImage): SpeciesCheck {
-        val gate = speciesGate ?: return SpeciesCheck.Unavailable
-        return try {
-            gate.check(image)
-        } catch (exception: IllegalStateException) {
-            SpeciesCheck.Unavailable
-        }
-    }
+    fun checkSpecies(image: PixelImage): SpeciesCheck =
+        speciesGate?.check(image) ?: SpeciesCheck.Unavailable(SpeciesUnavailableReason.NO_MODEL)
 
     /**
      * Records the result of [checkPhoto] and, for an accepted photo, of [checkSpecies].
      * [species] is ignored for a rejected photo.
      */
-    fun onPhotoChecked(rejection: RejectionReason?, species: SpeciesCheck = SpeciesCheck.Unavailable) {
+    fun onPhotoChecked(
+        rejection: RejectionReason?,
+        species: SpeciesCheck = SpeciesCheck.Unavailable(SpeciesUnavailableReason.NO_MODEL),
+    ) {
         state = if (rejection == null) CaptureState.PhotoAccepted(species) else CaptureState.PhotoRejected(rejection)
     }
 
@@ -148,18 +169,23 @@ class CaptureFlow(val settings: CaptureSettings, private val speciesGate: Specie
     }
 
     fun onCameraUnavailable() {
+        liveCaptureUnavailable = CaptureState.CameraUnavailable
         state = CaptureState.CameraUnavailable
     }
 
     fun onLevelSensorUnavailable() {
+        liveCaptureUnavailable = CaptureState.LevelSensorUnavailable
         state = CaptureState.LevelSensorUnavailable
     }
 
-    /** Returns to live guidance, starting the steady hold from scratch. */
+    /**
+     * Returns to live guidance, starting the steady hold from scratch. When live capture cannot
+     * run, returns to the state that explains why, where a library photo can still be picked.
+     */
     fun retake() {
         holdTimer.reset()
         latestCoverage = null
-        state = CaptureState.Guiding(guidance = null)
+        state = liveCaptureUnavailable ?: CaptureState.Guiding(guidance = null)
     }
 
     private fun refreshGuidance(timestampMillis: Long) {

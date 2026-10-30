@@ -1,13 +1,13 @@
 # Keep up: project status for the Android side
 
-Last updated: **2026-10-23**. Add a dated entry to the [log](#log) whenever something
+Last updated: **2026-10-30**. Add a dated entry to the [log](#log) whenever something
 lands or a decision changes, and keep the sections above it current.
 
 ## 1. In one paragraph
 
 An offline phone app that tells you **which sorghum cultivar** a sample is, from photos of
 a leaf, panicle or grain on a plain board. First it checks the sample **is sorghum** with a
-small on-device image model (MobileNetV3-Small). Then it reads visible traits (colours,
+small on-device image model (MobileNetV2, ADR-0010). Then it reads visible traits (colours,
 shapes, seed size) as probabilities and runs a naive Bayes model over genebank tables. It
 returns the best matches with reasons, or "unrecognized". It runs on Android and iPhone.
 All logic lives once, in Kotlin Multiplatform (`shared/`), and the native apps are thin
@@ -21,18 +21,22 @@ shells. The whole design is in [ARCHITECTURE.md](architecture/ARCHITECTURE.md).
 | Phase 1 logic moved into `shared/` (KMP), images passed as `PixelImage` | Done (migration step 1) | `main` (PR #3, merged) |
 | Capture state machine moved from `CaptureViewModel` to `shared/session/CaptureFlow` | Done (step 2) | `main` (PR #3, merged) |
 | iOS app uses `Shared.framework` instead of Swift copies; Swift ports deleted | Done (step 3). Still open: R3 benchmark on a real iPhone (live green check under 5 ms/frame) and a real-device check | `main` (PR #3, merged) |
-| `shared/species` (`ImageModel` port, `ModelMetadata`, `SpeciesGate`) + LiteRT runner on iPhone + photo-library analysis | Done; waits for a trained model file | `main` (PR #4, merged) |
-| Species model ("is it sorghum?"): data sources, training, INT8 export | Pipeline written; data download and training in progress on the LaCie drive | `feature/species-model` (replaces PR #1) |
-| Bundling `traits-vN` into iOS + model parity XCTest | In progress | `feature/ios-species-model` |
-| **Android species gate: LiteRT runner, asset loader, UI states** | In progress | `feature/android-litert` |
-| Colour card calibration, trait catalogue, reasoning (step 5-6) | In progress (PM session) | `feature/calibration`, `feature/traits-core`, `feature/reasoning` |
+| `shared/species` (`ImageModel` port, `ModelMetadata`, `SpeciesGate`) + LiteRT runner on iPhone + photo-library analysis | Done; bad output or a missing model gives "species not checked" (PR #18); waits for a trained model file | `main` (PR #4, PR #18) |
+| Species model ("is it sorghum?"): data sources, training, INT8 export | Pipeline merged (PR #11). **`traits-v2` meets the bar** (v2-3: sorghum vs not-sorghum 0.932 on test, bar 0.90; INT8 1.2 points under float, bar 2). Backbone MobileNetV2, exported with TF 2.17 (ADR-0010). Not bundled yet: iOS parity test next | `feature/species-model-v2` |
+| Bundling `traits-vN` into iOS + model parity XCTest | Done; waits for a model that passes the bar | `main` (PR #12, merged) |
+| **Android species gate: LiteRT runner, asset loader, UI states** | **Paused** (2026-10-23: iPhone first). Work in progress kept on the branch, no PR | `feature/android-litert` |
+| Trait catalogue + `TraitEstimate` with noise floor (`shared/traits`) | Done | `main` (PR #7) |
+| Colour card calibration: ColorChecker Classic Mini, affine colour fit, mm scale (`shared/calibration`, ADR-0008) | Done, internal to `shared/`; review follow-ups merged | `main` (PR #9, PR #16) |
+| Cultivar matching: `cultivars-vN.json` parser, `CultivarTableSource` port, naive Bayes, groups, "unrecognized", corrections (`shared/reasoning`) | Done; no real tables yet (Genesys builder not started) | `main` (PR #8) |
+| Sample detection: green detector moved to `shared/segmentation`; board-contrast mask for panicles and grain | Done; contrast mask not wired into capture yet | `main` (PR #17) |
+| `SessionState` and session API design (SKIE, 15 states) | Decided (ADR-0009). Session pipeline (S6a) not started | `main` (PR #13) |
 
 Migration steps (ARCHITECTURE.md section 8): 1 shared module, 2 session, 3 iOS on shared,
 4 species gate, 5 calibration, 6 measured traits + reasoning, 7 learned traits.
 **Steps 1-3 must not change behaviour.** If the app behaves differently after them, that
 is a bug.
 
-## 3. Android code map today (`feature/kmp-shared`)
+## 3. Android code map today (`main`)
 
 | File | What it does | Has logic? |
 |---|---|---|
@@ -46,7 +50,8 @@ is a bug.
 | `../app/.../camera/TiltSensor.kt` | Gravity sensor (accelerometer fallback) to `DeviceTilt` flow | No |
 | `shared/.../session/CaptureFlow.kt` | Capture state machine: guiding, checking, accepted, rejected, failures | Yes |
 | `shared/.../capture/guidance/*` | Tilt to instruction, steady-hold timer (800 ms) | Yes |
-| `shared/.../capture/sample/GreenCoverage.kt` | Excess-green plant detector, used live **and** after capture | Yes |
+| `shared/.../segmentation/GreenCoverage.kt` | Excess-green plant detector, used live **and** after capture (moved from `capture/sample` in PR #17) | Yes |
+| `shared/.../segmentation/SampleDetection.kt` | `detectSampleMask`: green mask for leaves, board-contrast mask for panicles and grain | Yes (not wired yet) |
 | `shared/.../capture/quality/PhotoQuality.kt` | No sample / too dark / glare / blurry at 640 px | Yes |
 | `shared/.../imaging/PixelImage.kt` | Plain RGB image type crossing the native/shared boundary | Type only |
 
@@ -88,7 +93,8 @@ In order. Items marked *ready* can start now.
 
 1. **Check phase 1 on a real Android device** now that the KMP core is merged (PR #3):
    guidance, auto-capture and rejections must behave as before. *Ready now.*
-2. **Species gate on Android** (step 4; being built on `feature/android-litert`, review it):
+2. **Species gate on Android** (step 4). **Paused 2026-10-23: iPhone first.** Work in progress is on
+   `feature/android-litert`; pick it up from there when Android resumes:
    - An `ImageModel` implementation using LiteRT: load `traits-vN.tflite` from assets once,
      feed the uint8 input, return `Map<HeadId, FloatArray>`. No preprocessing in Kotlin
      Android code; `shared/` does it from `traits-vN.json`.
@@ -104,7 +110,7 @@ In order. Items marked *ready* can start now.
 
 ## 7. The species model, in short
 
-Details in `model/README.md` on `feature/model-species-head`.
+Details in `model/README.md`.
 
 - **Classes** (output order): sorghum_bicolor, johnson_grass, maize, sugarcane,
   pearl_millet, finger_millet, other_grass, other_plant, no_plant. Johnson grass counts as a
@@ -112,10 +118,11 @@ Details in `model/README.md` on `feature/model-species-head`.
 - **Model I/O:** 224x224 RGB uint8 in, float logits out. `traits-vN.json` holds the input
   quantization, class order and groups, temperature, sorghum threshold and evaluation
   numbers.
-- **Data problem:** commercially licensed iNaturalist photos are thin (334 sorghum, 217
-  maize, 29 sugarcane, 11 pearl millet, 4 finger millet observations). **We need our own
-  photos** of millets, sugarcane and empty boards (`no_plant`) before a first model can
-  train. If you are near fields, photos help. One folder per plant or plot.
+- **Data:** iNaturalist, GBIF, Wikimedia Commons, Flickr, Mendeley and Figshare photos, with
+  CC BY-NC allowed; Commons and Flickr labels are checked with BioCLIP 2; splits by observer
+  or plot. Our own photos of millets, sugarcane and empty boards (`no_plant`) still help.
+- **Iteration 1 (held-out):** all 9 classes 0.867 float, 0.727 INT8; sorghum vs not-sorghum
+  0.671. Below the bar (0.90, INT8 within 2 points), so the export refused to ship it.
 
 ## 8. Open questions and decisions needed
 
@@ -127,6 +134,9 @@ Details in `model/README.md` on `feature/model-species-head`.
 | Does the species gate run on the board photos or on a separate whole-plant photo? | Changes what users photograph and what data we collect | Product owner |
 | Oldest Android device to support? | Sets the live-analysis performance budget | Team |
 | Which named cultivars and regions does v1 target? | Sets tables and priors | Product owner |
+| Measure a physical ColorChecker Classic Mini: centre of patch 1 to patch 6, divided by 5. The published sizes give 14.25 or 14.33 mm. **ASSUMPTION — confirm** (14.3 mm used) | Every mm trait (seed size) scales with it | Team |
+| Colour card sits in a fixed slot on the board. **ASSUMPTION — confirm** (ADR-0008) | Calibration searches only that slot; the contrast mask must exclude it before panicle and grain capture is wired | Product owner |
+| With no model, or a model that fails to load, photos go on to matching marked "species not checked"; an unsure result is always a retake. (ADR-0009) | Decides what users see before the species model ships | Product owner |
 
 ## 9. How we work
 
@@ -141,6 +151,58 @@ Details in `model/README.md` on `feature/model-species-head`.
 
 Newest first. One line per change that someone on Android should know about.
 
+- **2026-10-30:** T33 (#63, retrain basic race on clean labels) closed as not actionable with current data. Nothing was trained or scored. Under the #62 fallback, only 2 of 2,822 training accessions leave basic-race-v1's set and the rest are re-weighted alike, so a retrain would give v1 again. Validation has only 15 confirmed accessions (Caudatum 7, Durra 8; none for Bicolor, Guinea or Kafir), so there is nothing to score against. It waits for confirmed labels from the owner's race specialist or a second source (Genesys ICRISAT races).
+- **2026-10-30:** Basic-race training labels cleaned (T32, #62; `model/manifests/basic-race-training-labels.csv`). Confirmed-label rule (ADR-0013) on the train and validation accessions; test not read. Only 52 of 2,822 training accessions are confirmed (Bicolor 3, Caudatum 21, Durra 27, Guinea 1, Kafir 0) and 15 of 610 validation ones (Caudatum 7, Durra 8). Bicolor, Guinea and Kafir are short of 20, so the documented fallback weights every race alike: confirmed 1.0, single observation 0.79, contradicted 0 (2 Caudatum accessions). Each accession keeps its exclusion reason.
+- **2026-10-30:** Core accession shortlist (T26, #52; `model/manifests/core-accession-shortlist.csv`). 150 core accessions + 30 alternates per basic race, from 12,629 GRIN accessions with one basic race, ranked by label confidence, descriptor coverage and origin spread. Seed is available for almost all. The sealed test is short of accessions with confirmed labels (two agreeing observations): Bicolor 4, Caudatum 19 and Kafir 0 of the 50 needed; Guinea and Durra are full. A blind race check by a specialist on the grown plants, or the Genesys ICRISAT races (needs a login), can close the gap. Seed requests are a placeholder of 100 seeds per accession.
+- **2026-10-30:** External check of the species gate `traits-v2` on MFWD (Genze et al. 2024, CC BY 4.0), whose top-down greenhouse seedlings were never used in training. Per photo: sorghum recall 0.489; false "sorghum" on maize 0.413, on grass weeds 0.210 and on broadleaf weeds 0.420. Per plant: recall 0.402 and maize 0.430. Small seedlings of any species are called sorghum, and larger sorghum seedlings are called maize. Domain shift, not app accuracy: seedlings are not an app photo type. `model/README.md`, "External check: MFWD".
+- **2026-10-30:** Type evaluation protocol frozen as `type-eval-v1` (T25, #51; ADR-0013, `docs/architecture/type-evaluation-protocol.md`). Type = the five basic races (owner decision). Per accession: mean of the photos' calibrated probabilities, groups of at most two races, abstention not correct. Gate: selective accuracy >= 0.89 at coverage >= 0.80 (`RaceGateSettings`), so type accuracy >= 0.712. Per-race results with Wilson 95% intervals, an intermediate side report, a split-manifest schema, and a sealed test (salt hash then draw, a custodian, hashed photos, one scoring). Photos: panicle (2 plants), grain and glume on a board with the colour card and a mm ruler; leaf optional.
+- **2026-10-30:** Race label crosswalk (T24, #50; `model/manifests/race-crosswalk-frontiers.csv`). All 281 Frontiers 2023 race-panel samples were looked up on GRIN: 224 matched, 0 ambiguous, 57 failed (31 of the 71 IS numbers are not in GRIN, plus 13 samples without a genebank number). 58 have a race in both sources. Exact agreement is 0.40 [0.28, 0.53]; when both name a basic race it is 0.79 [0.62, 0.90]; Kafir 0/5, Durra 2/17. Genesys (ICRISAT) race not read: its API needs a login (HTTP 401).
+- **2026-10-30:** traits-v3 bundled on iOS (T19, #45, ADR-0012). One LiteRT file has two outputs: 0 is species (traits-v2, bit-identical) and 1 is the experimental basicRace (basic-race-v1, bit-identical). It was made by a structural merge of the two TF 2.17 exports, with nothing re-quantized. Size 5.43 MB (was 2.72 MB), and inference takes about 2x per photo. iOS parity: 0.0 logit steps on 12 species and 10 basic-race fixtures, and the answers match model/ on 10/10. `shared/species` adds `BasicRaceHead` (optional head in schema 1) and `readBasicRace`, which returns a group, "unrecognized" or unavailable, always marked experimental. Nothing gates on it and no UI shows it. **Android:** when its runner resumes, bundle traits-v3. Output 0 is unchanged.
+- **2026-10-30:** basic-race-v1 evaluation locked and error analysis published (T18, #44). Test numbers unchanged (gate rule 0.89: 0.965 selective at 0.793 coverage, gate missed; second rule 0.81: 0.945 at 0.904, reported only). Guinea, Bicolor and Kafir misses are mostly "unrecognized" (44 of 53), and their wrong answers go to Caudatum and Durra. A looser rule turns these abstentions into wrong answers. Proposed rule mass 0.87 (coverage margin 0.05) was chosen on validation only and is not yet tested. `model/README.md`, "Basic-race locked evaluation and error analysis".
+- **2026-10-30:** Basic-race output basic-race-v1 (T14, #37), named apart from the 15-race result: five basic races, intermediates excluded from training and headline. Test INT8: selective accuracy 0.965 at 0.793 coverage (gate 0.89 at >= 0.80: missed on coverage only), 0.945 at 0.904 with the 90% rule; planting baseline 0.784. Intermediates answered 0.654, parent in group 0.940. `model/README.md`, "Basic-race output".
+- **2026-10-30:** Learned trait heads trait-heads-v1 (T12, #35): glume colour, grain colour and panicle compactness/shape heads trained from GRIN descriptors (`cultivar_traits.py` label rules), scored once on test. **No head passes the R6 gate** (`TraitGateSettings`): test INT8 accuracy 0.588 / 0.668 / 0.676 against a 0.70 bar. Trait-first naive Bayes over these readings gives race top-1 0.456 (race-v1 0.558); even perfect GRIN readings of the same traits give 0.441. Not bundled; details in `model/README.md`, "Trait heads".
+- **2026-10-30:** GRIN photos per planting (#36, `feature/grin-multi-image`). The downloader used each study row's IMAGE cell, which shows the accession's first GRIN image, often from another planting. As a result, all 426 accessions in two or more plantings had the same file in each, and the `planting_split` test photos were copies of training photos. It now uses the NOTE column link. Result: 9,410 distinct photos of 8,965 accessions (was 8,964 distinct files); +446 net, 0 shared files; no accession changed `accession_split`. race-v1 predates the fix.
+- **2026-10-30:** Model-completion audit (T10, #33): [model-status.md](architecture/model-status.md) lists each component as complete, deferred, blocked or not started. Species gate and naive Bayes code are complete; learned trait heads (#35), measured readers and `cultivars-v1.json` are not started; race-v1 is deferred (#37, #38). GRIN descriptors can feed the first table without Genesys, but only 9.9% of fully described accessions have a unique 6-trait profile (R1).
+- **2026-10-30:** Race model race-v1 trained and scored once on test (T9, #32,
+  `feature/race-model-v1`): **89% gate missed**. INT8 selective group-aware race accuracy 0.768
+  at coverage 0.797 (gate 0.89 at >= 0.80), 0.715 at 0.912; +0.275 over the planting baseline
+  (0.493); float/INT8 delta 0.009. New `race-train` and `race-export` commands. Numbers and
+  what would close the gap: `model/README.md`, "Race model results". #32 stays open.
+- **2026-10-30:** Species model iterations 2-3 (`feature/species-model-v2`, ADR-0010). The
+  Keras MobileNetV3-Small weights lose ~10 points to INT8 even before fine-tuning, so the
+  backbone is now MobileNetV2 1.0 (2.7 MB INT8), converted with TF 2.17 to match
+  TensorFlowLiteSwift 2.17.0. Results on test, INT8: v2-1 (MobileNetV3 minimalistic) 0.765
+  sorghum vs not, v2-2 (MobileNetV2) 0.857; bar 0.90. v2-2's split was defective (1,499
+  Sorghum Disease photos chained into one near-duplicate group, all in test); that dataset
+  is now exempt. **v2-3 on the fixed split meets the bar: 0.932 on test, INT8 within 1.2
+  points of float; exported as `traits-v2`** (iOS parity test before bundling). The
+  threshold is now the most accurate one on validation with >= 95% sorghum precision
+  (ASSUMPTION, confirm).
+  `traits-vN.json` gains only additive keys. Nothing for Android to change.
+- **2026-10-30:** Branch and worktree cleanup (#27). Deleted 20 branches, local and remote,
+  whose work is on `main` through merged PRs #3-#20 (closed #1 and #2 were superseded by #11
+  and #6), plus the local `test/ios-diag-parity`. Pruned 9 worktrees whose folders were gone
+  and removed 10 clean worktrees of merged branches. Kept: `feature/species-model-v2` and
+  `feature/cultivar-data` (active runs); `feature/android-litert` (paused, unmerged LiteRT
+  work); `backup/android-litert-pre-rebase`; and the worktrees of `feature/species-model`
+  and `fix/species-invalid-output`, which hold uncommitted changes. The list with a
+  recommendation for each is on #27.
+- **2026-10-23:** PR #18 merged: the species check reports bad model output as
+  `Unavailable(reason)` instead of crashing, and an invalid model loads as "no model". Only
+  sorghum and unchecked photos go on to matching; unsure means retake. iOS shows "Species
+  not checked". Android must render the same state when its gate resumes.
+- **2026-10-23:** PRs #8, #16 and #17 merged after review and green tests (`:shared:allTests`
+  235 JVM + 235 iOS simulator, `:app:testDebugUnitTest`). `shared/` now has trait reading
+  types, colour-card calibration, cultivar matching and the panicle/grain contrast mask.
+  **Android imports changed:** `GreenCoverage` and friends moved from `capture.sample` to
+  `com.sorghum.segmentation`, and `PhotoType` to `com.sorghum.imaging`. Swift names did not
+  change. Follow-ups before the contrast mask is wired into capture: exclude the colour-card
+  slot, add boundary tests, and include the per-frame mask allocation in the R3 timing check.
+- **2026-10-23:** Focus is iPhone first. Android species-gate work (`feature/android-litert`)
+  is paused with no PR; `app/` only gets import fixes when a `shared/` package moves.
+- **2026-10-23:** Builds on this Mac: never build on the exFAT LaCie drive (Gradle and
+  Kotlin/Native hang in kernel I/O there) and run one KMP build at a time (parallel builds
+  pushed swap past 13 GB). Worktrees and the Gradle home live in an APFS sparse image on LaCie.
 - **2026-10-23:** PR #11 merged (`model/` pipeline): downloaders for iNaturalist, GBIF,
   Commons, Flickr, Mendeley and Figshare; BioCLIP 2 check of Commons/Flickr labels (unchecked
   labels never reach training); duplicate removal; export refuses a model below the bar.

@@ -1,0 +1,44 @@
+Core accession shortlist (type-eval-v1, T26)
+  target per race: 150 core (100 development + 50 test), 30 alternates; at most 40% of a core from one origin while others are left
+  seed request (placeholder rule): 100 seeds per core and alternate accession
+
+Bicolor
+  GRIN accessions labelled Bicolor: 855; excluded: second-source-disagrees 0, no-orderable-seed 7; candidates: 848
+  candidate label tiers: corroborated 1, repeated 6, single 841
+  core: 150 (test-eligible 4); alternates: 30
+  core label tiers: corroborated 1, repeated 6, single 143
+  core origins: 31 countries (top: China 22, Turkey 21, Ethiopia 18)
+  shortfall: test-eligible short by 46
+
+Guinea
+  GRIN accessions labelled Guinea: 3014; excluded: second-source-disagrees 2, no-orderable-seed 4; candidates: 3008
+  candidate label tiers: corroborated 7, repeated 154, single 2847
+  core: 150 (test-eligible 72); alternates: 30
+  core label tiers: corroborated 7, repeated 66, single 77
+  core origins: 18 countries (top: Mali 60, Burkina Faso 19, Benin 19)
+  shortfall: none
+
+Caudatum
+  GRIN accessions labelled Caudatum: 4285; excluded: second-source-disagrees 5, no-orderable-seed 6; candidates: 4274
+  candidate label tiers: corroborated 13, repeated 34, single 4227
+  core: 150 (test-eligible 19); alternates: 30
+  core label tiers: corroborated 13, repeated 34, single 103
+  core origins: 22 countries (top: Sudan 60, Uganda 23, Ethiopia 14)
+  shortfall: test-eligible short by 31
+
+Kafir
+  GRIN accessions labelled Kafir: 673; excluded: second-source-disagrees 1, no-orderable-seed 5; candidates: 667
+  candidate label tiers: corroborated 0, repeated 0, single 667
+  core: 150 (test-eligible 0); alternates: 30
+  core label tiers: corroborated 0, repeated 0, single 150
+  core origins: 24 countries (top: South Africa 47, Sudan 18, India 11)
+  shortfall: test-eligible short by 50
+
+Durra
+  GRIN accessions labelled Durra: 3802; excluded: second-source-disagrees 2, no-orderable-seed 11; candidates: 3789
+  candidate label tiers: corroborated 2, repeated 84, single 3703
+  core: 150 (test-eligible 50); alternates: 30
+  core label tiers: corroborated 2, repeated 79, single 69
+  core origins: 18 countries (top: Ethiopia 60, Sudan 33, Mali 19)
+  shortfall: none
+

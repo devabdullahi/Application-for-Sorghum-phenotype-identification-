@@ -4,6 +4,7 @@ import pytest
 from sorghum_model.settings import ExportSettings
 from sorghum_model.ship_bar import (
     BelowShipBarError,
+    converter_version_problems,
     enforce_ship_bar,
     ship_bar_problems,
     sorghum_decision_accuracy,
@@ -44,3 +45,12 @@ def test_export_refuses_below_the_bar_unless_allowed():
 def test_settings_reject_out_of_range_bars(field, value):
     with pytest.raises(ValueError):
         ExportSettings(**{field: value})
+
+
+@pytest.mark.parametrize(
+    ("version", "is_accepted"),
+    [("2.17.0", True), ("2.17.1", True), ("2.16.2", False), ("2.18.0", False), ("2.20.0", False)],
+)
+def test_converter_must_match_the_phone_runtime(version, is_accepted):
+    problems = converter_version_problems(version, ExportSettings(converter_tensorflow_version="2.17"))
+    assert (problems == []) is is_accepted

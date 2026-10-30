@@ -19,7 +19,7 @@ import kotlin.math.abs
  * @param meanDeltaE mean CIE76 ΔE between the corrected card patches and their reference
  *   values: how well the fit explains the card. Higher means a worse fit.
  */
-class ColourCorrection internal constructor(
+internal class ColourCorrection(
     private val coefficients: DoubleArray,
     val meanDeltaE: Float,
 ) {
@@ -51,7 +51,7 @@ class ColourCorrection internal constructor(
  * @param correctedLinearRgb row-major, 3 floats per pixel (R, G, B) in linear sRGB, clamped
  *   to 0..1. Same layout as [PixelImage.rgb], so pixel indices carry over.
  */
-class CorrectedImage(val width: Int, val height: Int, val correctedLinearRgb: FloatArray) {
+internal class CorrectedImage(val width: Int, val height: Int, val correctedLinearRgb: FloatArray) {
     init {
         require(width > 0 && height > 0) { "Image must have positive size, was ${width}x$height" }
         require(correctedLinearRgb.size == width * height * CHANNELS) {
@@ -66,10 +66,10 @@ class CorrectedImage(val width: Int, val height: Int, val correctedLinearRgb: Fl
 
 /**
  * Applies [correction] to every pixel of [image]: decode sRGB to linear, apply the affine
- * transform, clamp to 0..1. Clamping is deliberate: colours the card cannot vouch for (brighter
- * than its white or darker than its black after correction) are not meaningful to traits.
+ * transform, clamp to 0..1. Clamping is deliberate: corrected colours outside the 0..1 range of
+ * linear sRGB (ARCHITECTURE §3.3) are not meaningful to traits.
  */
-fun applyColourCorrection(image: PixelImage, correction: ColourCorrection): CorrectedImage {
+internal fun applyColourCorrection(image: PixelImage, correction: ColourCorrection): CorrectedImage {
     val output = FloatArray(image.rgb.size)
     for (pixel in 0 until image.pixelCount) {
         val measured = LinearRgb(
@@ -98,7 +98,8 @@ private const val AFFINE_COEFFICIENT_COUNT = 12
  * fit's residual is then measured against [referenceLab], the same patches in Lab.
  *
  * Returns null when the patches do not determine a unique transform (for example all patches
- * measured the same colour), which only happens when what was sampled is not a colour card.
+ * measured the same colour, or nearly grey so R, G and B carry the same information), which
+ * only happens when what was sampled is not a colour card.
  */
 internal fun fitAffineColourCorrection(
     measured: List<LinearRgb>,
@@ -143,10 +144,13 @@ private fun meanDeltaE(correction: ColourCorrection, measured: List<LinearRgb>, 
 }
 
 /**
- * Pivot magnitudes below this make the system singular. The normal matrix holds sums of 24
- * products of values in 0..1, so a real card gives pivots many orders of magnitude larger.
+ * A pivot smaller than this fraction of the matrix's largest diagonal entry makes the system
+ * singular. Relative rather than absolute because the normal matrix scales with the patch
+ * count and brightness: a fixed cut-off would accept nearly collinear (near-grey) patches whose
+ * "solution" is huge coefficients amplifying noise. On a real card the colour columns are far
+ * from collinear and the smallest pivot is several orders of magnitude above this fraction.
  */
-private const val SINGULAR_PIVOT = 1e-10
+private const val RELATIVE_SINGULAR_PIVOT = 1e-9
 
 /** Solves the small square system [matrix] x = [rightHandSide] by Gaussian elimination with partial pivoting; null if singular. */
 private fun solveLinearSystem(matrix: Array<DoubleArray>, rightHandSide: DoubleArray): DoubleArray? {
@@ -154,11 +158,18 @@ private fun solveLinearSystem(matrix: Array<DoubleArray>, rightHandSide: DoubleA
     val a = Array(size) { matrix[it].copyOf() }
     val b = rightHandSide.copyOf()
 
+    val largestDiagonal = (0 until size).maxOf { abs(matrix[it][it]) }
+    val singularPivot = RELATIVE_SINGULAR_PIVOT * largestDiagonal
+
     for (column in 0 until size) {
         val pivotRow = (column until size).maxBy { abs(a[it][column]) }
-        if (abs(a[pivotRow][column]) < SINGULAR_PIVOT) return null
-        a[column] = a[pivotRow].also { a[pivotRow] = a[column] }
-        b[column] = b[pivotRow].also { b[pivotRow] = b[column] }
+        if (abs(a[pivotRow][column]) < singularPivot) return null
+        val rowToSwap = a[column]
+        a[column] = a[pivotRow]
+        a[pivotRow] = rowToSwap
+        val valueToSwap = b[column]
+        b[column] = b[pivotRow]
+        b[pivotRow] = valueToSwap
 
         for (row in column + 1 until size) {
             val factor = a[row][column] / a[column][column]

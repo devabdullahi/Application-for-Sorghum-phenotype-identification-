@@ -8,6 +8,7 @@ import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -216,6 +217,17 @@ class ColourCardCalibrationTest {
             CardNotFoundReason.POOR_COLOUR_FIT,
             notFoundReason(calibrate(settings = ColourCardSettings(maxMeanDeltaE = residual * 0.999f))),
         )
+    }
+
+    @Test
+    fun `colour fit gate fails closed on a non-finite residual`() {
+        val settings = ColourCardSettings(maxMeanDeltaE = 6f)
+
+        assertTrue(isColourFitAcceptable(6f, settings))
+        assertTrue(isColourFitAcceptable(5.99f, settings))
+        assertFalse(isColourFitAcceptable(6.01f, settings))
+        assertFalse(isColourFitAcceptable(Float.NaN, settings))
+        assertFalse(isColourFitAcceptable(Float.POSITIVE_INFINITY, settings))
     }
 
     @Test

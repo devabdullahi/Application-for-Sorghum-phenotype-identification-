@@ -41,6 +41,10 @@ final class SpeciesModelParityTests: XCTestCase {
         XCTAssertFalse(fixtures.entries.isEmpty, "expected.json lists no fixtures")
         let logitTolerance = allowedLogitSteps * logitStep
 
+        // Reported at the end, so a passing run still records how close iOS and the export are.
+        var largestLogitDifferenceInSteps: Float = 0
+        var matchingTopClassCount = 0
+
         let recorder = RecordingImageModel(wrapping: installed.model)
         guard let gate = loadGate(metadataJson: installed.metadataJson, model: recorder) else {
             return XCTFail("traits-v\(installed.version).json was refused by shared/")
@@ -62,10 +66,14 @@ final class SpeciesModelParityTests: XCTestCase {
                 continue
             }
             for (index, (actual, expected)) in zip(logits, fixture.logits).enumerated() {
+                largestLogitDifferenceInSteps = max(largestLogitDifferenceInSteps, abs(actual - expected) / logitStep)
                 XCTAssertEqual(
                     actual, expected, accuracy: logitTolerance,
                     "\(fixture.image) (\(fixture.classId)): logit \(index) is \(actual) on iOS, \(expected) in the export"
                 )
+            }
+            if indexOfLargest(logits) == indexOfLargest(fixture.logits) {
+                matchingTopClassCount += 1
             }
             XCTAssertEqual(
                 indexOfLargest(logits), indexOfLargest(fixture.logits),
@@ -79,6 +87,10 @@ final class SpeciesModelParityTests: XCTestCase {
             let exportedCheck = exportedGate.check(photo: photo)
             assertSameSorghumProbability(iosCheck, exportedCheck, fixture: fixture.image)
         }
+        print(
+            "Species parity traits-v\(installed.version): largest logit difference \(largestLogitDifferenceInSteps) steps "
+                + "(allowed \(allowedLogitSteps)), top class matches on \(matchingTopClassCount)/\(fixtures.entries.count) fixtures"
+        )
     }
 
     /// Asserts both checks carry the same calibrated sorghum probability, within tolerance.
@@ -217,8 +229,9 @@ final class SpeciesModelParityTests: XCTestCase {
 }
 
 /// Passes every call to the app's `LiteRTImageModel` and keeps the last outputs, so the test
-/// sees the raw logits of the exact call the species gate made.
-private final class RecordingImageModel: NSObject, ImageModel {
+/// sees the raw logits of the exact call the species gate made. Also used by
+/// `BasicRaceModelParityTests`, which reads another output of the same call.
+final class RecordingImageModel: NSObject, ImageModel {
     private let model: LiteRTImageModel
     /// Outputs of the most recent `run`, as floats; nil before the first call.
     private(set) var lastOutputs: [[Float]]?

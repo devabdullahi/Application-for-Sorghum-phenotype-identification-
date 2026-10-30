@@ -13,6 +13,9 @@ from sorghum_model.species_classes import SPECIES_CLASSES
 
 METADATA_SCHEMA_VERSION = 1
 SPECIES_HEAD_ID = "species"
+# The experimental five-basic-race output (basic-race-v1, #37), packed into traits-v3 (ADR-0012).
+# Optional in schema 1: a reader that does not know it ignores it.
+BASIC_RACE_HEAD_ID = "basicRace"
 
 # Preprocessing contract with `shared/`: crop the largest centred square, then resize with
 # bilinear filtering (antialiased when shrinking) to the input size. Fixtures are stored
@@ -49,6 +52,7 @@ def build_metadata(
     training_data: dict,
     ship_bar: dict,
     below_bar: bool,
+    backbone: str,
 ) -> dict:
     """Assembles the metadata document and validates it before returning.
 
@@ -61,7 +65,7 @@ def build_metadata(
         "modelVersion": version,
         "modelFile": model_file,
         "createdOn": created_on,
-        "backbone": "MobileNetV3-Small (ImageNet weights)",
+        "backbone": f"{backbone} (ImageNet weights)",
         "input": {
             "widthPx": input_size_px,
             "heightPx": input_size_px,
@@ -96,6 +100,41 @@ def build_metadata(
     return metadata
 
 
+def basic_race_head(
+    *,
+    output_index: int,
+    races: list[str],
+    temperature: float,
+    group_probability_mass: float,
+    max_group_size: int,
+    meets_accuracy_goal: bool,
+    status: str,
+    evaluation: dict,
+    source_model: dict,
+) -> dict:
+    """The `heads.basicRace` entry: what `shared/` needs to turn the output into a group of
+    basic races or "unrecognized", plus the evaluation it was locked with.
+
+    The answer rule is data, like `sorghumThreshold`, because it was chosen on validation
+    together with the model. `experimental` is always true here: the output is a hint
+    that has not met its accuracy goal and must never be shown as a pass (#44, #45).
+    """
+    head = {
+        "outputIndex": output_index,
+        "output": "logits",
+        "races": list(races),
+        "temperature": temperature,
+        "answerRule": {"groupProbabilityMass": group_probability_mass, "maxGroupSize": max_group_size},
+        "experimental": True,
+        "meetsAccuracyGoal": meets_accuracy_goal,
+        "status": status,
+        "evaluation": evaluation,
+        "sourceModel": source_model,
+    }
+    _validate_basic_race_head(head)
+    return head
+
+
 def validate_metadata(metadata: dict) -> None:
     """Raises ValueError if the document would be refused by `shared/` or is inconsistent."""
     if metadata.get("schemaVersion") != METADATA_SCHEMA_VERSION:
@@ -116,6 +155,35 @@ def validate_metadata(metadata: dict) -> None:
         raise ValueError("sorghumThreshold must be in (0, 1)")
     if metadata["input"]["quantization"]["scale"] <= 0:
         raise ValueError("input quantization scale must be positive")
+
+    basic_race = metadata["heads"].get(BASIC_RACE_HEAD_ID)
+    if basic_race is not None:
+        _validate_basic_race_head(basic_race)
+        if basic_race["outputIndex"] == species["outputIndex"]:
+            raise ValueError("basicRace and species heads must read different outputs")
+    head_order = metadata.get("headOrder")
+    if head_order is not None:
+        by_index = sorted(metadata["heads"], key=lambda head_id: metadata["heads"][head_id]["outputIndex"])
+        if head_order != by_index:
+            raise ValueError(f"headOrder {head_order} does not follow the heads' outputIndex order {by_index}")
+
+
+def _validate_basic_race_head(head: dict) -> None:
+    """The same checks `shared/` applies when it parses the head (ModelMetadata.kt)."""
+    races = head["races"]
+    if not races or len(races) != len(set(races)):
+        raise ValueError("basicRace races must be unique and not empty")
+    if not head["outputIndex"] >= 0:
+        raise ValueError("basicRace outputIndex must not be negative")
+    if not head["temperature"] > 0:
+        raise ValueError("basicRace temperature must be positive")
+    rule = head["answerRule"]
+    if not 0.5 <= rule["groupProbabilityMass"] < 1:
+        raise ValueError("basicRace groupProbabilityMass must be in [0.5, 1)")
+    if not 1 <= rule["maxGroupSize"] <= len(races):
+        raise ValueError("basicRace maxGroupSize must be between 1 and the number of races")
+    if not head["experimental"] and not head["meetsAccuracyGoal"]:
+        raise ValueError("a basicRace output that misses its accuracy goal must be marked experimental")
 
 
 def write_metadata(metadata: dict, path: Path) -> None:
