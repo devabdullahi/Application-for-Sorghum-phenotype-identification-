@@ -1,0 +1,59 @@
+Identity (Frontiers 2023 Table 1 sample -> GRIN-Global accession)
+  name type     samples  matched  ambiguous  failed  photographed
+  IS                 71       40          0      31             5
+  NSL                41       28          0      13             0
+  PI                156      156          0       0            17
+  sample name        13        0          0      13             0
+  all               281      224          0      57            22
+  matched with a scored GRIN race: 58 of 224; without: conflicting-observations 1, no-race-observation 164, race-unknown 1
+  matched with an ICRISAT IS number on GRIN: 213
+
+Race agreement, Frontiers vs GRIN (matched accessions with a race in both; Wilson 95% CI)
+  b-vs-i: one names a basic race, the other an intermediate of it; share: two intermediates
+  with a common parent; diff: no parent in common.
+  Frontiers race      n  same  b-vs-i  share  diff    exact agreement [95% CI]     same or b-vs-i [95% CI]
+  Bicolor             2     1       0      0     1       1/2 0.50 [0.09, 0.91]       1/2 0.50 [0.09, 0.91]
+  Guinea              9     7       1      0     1       7/9 0.78 [0.45, 0.94]       8/9 0.89 [0.57, 0.98]
+  Caudatum           17    13       3      0     1     13/17 0.76 [0.53, 0.90]     16/17 0.94 [0.73, 0.99]
+  Kafir               5     0       2      0     3       0/5 0.00 [0.00, 0.43]       2/5 0.40 [0.12, 0.77]
+  Durra              17     2       7      0     8      2/17 0.12 [0.03, 0.34]      9/17 0.53 [0.31, 0.74]
+  Intermediate        8     0       2      4     2       0/8 0.00 [0.00, 0.32]       2/8 0.25 [0.07, 0.59]
+  all                58    23      15      4    16     23/58 0.40 [0.28, 0.53]     38/58 0.66 [0.53, 0.76]
+  both basic         29    23       0      0     6     23/29 0.79 [0.62, 0.90]     23/29 0.79 [0.62, 0.90]
+
+Race mismatches (35)
+  PI152730   PI 152730  basic-vs-intermediate: Frontiers Caudatum, GRIN Caudatum-bicolor (GRIN values: Caudatum-bicolor; 1 GRIN studies)
+  PI297117   PI 297117  basic-vs-intermediate: Frontiers Caudatum, GRIN Guinea-caudatum (GRIN values: Guinea-caudatum; 1 GRIN studies)
+  PI562963   PI 562963  basic-vs-intermediate: Frontiers Caudatum, GRIN Guinea-caudatum (GRIN values: Guinea-caudatum; 1 GRIN studies)
+  IS19153    PI 569177  basic-vs-intermediate: Frontiers Caudatum-guinea, GRIN Caudatum (GRIN values: Caudatum; 1 GRIN studies)
+  IS6928     PI 586791  basic-vs-intermediate: Frontiers Caudatum-guinea, GRIN Caudatum (GRIN values: Caudatum; 1 GRIN studies)
+  PI267650   PI 267650  basic-vs-intermediate: Frontiers Durra, GRIN Durra-bicolor (GRIN values: Durra-bicolor; 1 GRIN studies)
+  PI276770   PI 276770  basic-vs-intermediate: Frontiers Durra, GRIN Durra-bicolor (GRIN values: Durra-bicolor; 1 GRIN studies)
+  PI276785   PI 276785  basic-vs-intermediate: Frontiers Durra, GRIN Durra-bicolor (GRIN values: Durra-bicolor; 1 GRIN studies)
+  PI276789   PI 276789  basic-vs-intermediate: Frontiers Durra, GRIN Durra-bicolor (GRIN values: Durra-bicolor; 1 GRIN studies)
+  PI276790   PI 276790  basic-vs-intermediate: Frontiers Durra, GRIN Durra-bicolor (GRIN values: Durra-bicolor; 1 GRIN studies)
+  PI276800   PI 276800  basic-vs-intermediate: Frontiers Durra, GRIN Durra-bicolor (GRIN values: Durra-bicolor; 1 GRIN studies)
+  PI276803   PI 276803  basic-vs-intermediate: Frontiers Durra, GRIN Durra-bicolor (GRIN values: Durra-bicolor; 1 GRIN studies)
+  PI285043   PI 285043  basic-vs-intermediate: Frontiers Guinea, GRIN Guinea-caudatum (GRIN values: Guinea-caudatum; 1 GRIN studies)
+  IS12937    PI 196058  basic-vs-intermediate: Frontiers Kafir, GRIN Kafir-durra (GRIN values: Kafir-durra; 1 GRIN studies)
+  PI524948   PI 524948  basic-vs-intermediate: Frontiers Kafir, GRIN Guinea-kafir (GRIN values: Guinea-kafir; 1 GRIN studies)
+  IS24939    PI 585438  different-race: Frontiers Bicolor, GRIN Caudatum (GRIN values: Caudatum; 1 GRIN studies)
+  IS13549    PI 291076  different-race: Frontiers Bicolor-caudatum, GRIN Durra (GRIN values: Durra; 1 GRIN studies)
+  PI152748   PI 152748  different-race: Frontiers Caudatum, GRIN Guinea (GRIN values: Guinea; 1 GRIN studies)
+  IS28747    PI 475429  different-race: Frontiers Caudatum-durra, GRIN Kafir (GRIN values: Kafir; 1 GRIN studies)
+  PI147838   PI 147838  different-race: Frontiers Durra, GRIN Kafir-bicolor (GRIN values: Kafir-bicolor; 1 GRIN studies)
+  PI221662   PI 221662  different-race: Frontiers Durra, GRIN Guinea (GRIN values: Guinea; 1 GRIN studies)
+  PI248317   PI 248317  different-race: Frontiers Durra, GRIN Kafir-caudatum (GRIN values: Kafir-caudatum; 1 GRIN studies)
+  PI267643   PI 267643  different-race: Frontiers Durra, GRIN Kafir-caudatum (GRIN values: Kafir-caudatum; 1 GRIN studies)
+  PI276806   PI 276806  different-race: Frontiers Durra, GRIN Kafir-caudatum (GRIN values: Kafir-caudatum; 1 GRIN studies)
+  PI276823   PI 276823  different-race: Frontiers Durra, GRIN Kafir-caudatum (GRIN values: Kafir-caudatum; 1 GRIN studies)
+  PI570813   PI 570813  different-race: Frontiers Durra, GRIN Guinea-caudatum (GRIN values: Guinea-caudatum; 1 GRIN studies)
+  PI571020   PI 571020  different-race: Frontiers Durra, GRIN Kafir-bicolor (GRIN values: Kafir-bicolor; 1 GRIN studies)
+  PI267614   PI 267614  different-race: Frontiers Guinea, GRIN Kafir-caudatum (GRIN values: Kafir-caudatum; 1 GRIN studies)
+  IS12945    PI 197050  different-race: Frontiers Kafir, GRIN Caudatum (GRIN values: Caudatum; 1 GRIN studies)
+  IS22294    PI 510965  different-race: Frontiers Kafir, GRIN Durra (GRIN values: Durra; 1 GRIN studies)
+  PI505705   PI 505705  different-race: Frontiers Kafir, GRIN Caudatum (GRIN values: Caudatum; 1 GRIN studies)
+  IS13294    PI 274509  intermediates-share-a-parent: Frontiers Bicolor-caudatum, GRIN Guinea-caudatum (GRIN values: Guinea-caudatum; 1 GRIN studies)
+  IS28141    PI 474787  intermediates-share-a-parent: Frontiers Caudatum-durra, GRIN Kafir-caudatum (GRIN values: Kafir-caudatum; 1 GRIN studies)
+  IS28614    PI 475292  intermediates-share-a-parent: Frontiers Caudatum-durra, GRIN Kafir-caudatum (GRIN values: Kafir-caudatum; 1 GRIN studies)
+  IS28449    PI 475116  intermediates-share-a-parent: Frontiers Caudatum-guinea, GRIN Kafir-caudatum (GRIN values: Kafir-caudatum; 1 GRIN studies)

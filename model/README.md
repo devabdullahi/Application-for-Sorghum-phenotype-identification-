@@ -233,6 +233,65 @@ the extra images of 13 accessions were never fetched. A rerun of `grin-download`
 file only when the old manifest says it came from another URL, and reads the study pages from
 the `grin-descriptors` page cache.
 
+### Race label crosswalk (T24, #50, 2026-10-30)
+
+How reliable are GRIN's race labels? `race-crosswalk` matches every sample of the Frontiers
+2023 race genomics panel (Table 1, CC BY 4.0, figshare 22292089) to a GRIN accession and
+compares the two races (`frontiers_races.py`, `grin_accessions.py`, `race_crosswalk.py`).
+
+- **Identity:** a Frontiers name (PI, NSL or IS number) is `matched` when exactly one GRIN
+  sorghum accession lists that number on its public detail page, `ambiguous` when several do,
+  and `failed` otherwise. GRIN's search is fuzzy, so every sorghum hit is opened and checked
+  (only the exact accession for a PI). Search and detail pages are cached in
+  `<data>/cultivar/grin-accession-pages`. The detail page also gives the ICRISAT IS number.
+- **Race:** GRIN's label is the race model's own (`race_labels` over every GRIN race study).
+  Races are compared by basic-race parents, because Frontiers writes "Bicolor-caudatum" where
+  GRIN writes "Caudatum-bicolor". Each row keeps both labels and the reason for any mismatch.
+- **ICRISAT (Genesys):** not read. The Genesys API answered HTTP 401 (bearer token) and its
+  download needs a login, so `genesys_race` is blank. Adding it needs a Genesys export.
+
+```bash
+uv run sorghum-model race-crosswalk   # downloads the workbook (md5-checked), then GRIN pages, paced 2 s
+```
+
+Output: `manifests/race-crosswalk-frontiers.csv` (281 rows) and `-summary.txt`. Results:
+
+| Frontiers name | samples | matched | failed | GRIN-photographed |
+|---|---|---|---|---|
+| IS (ICRISAT) | 71 | 40 | 31 (GRIN does not hold them) | 5 |
+| NSL | 41 | 28 | 13 | 0 |
+| PI | 156 | 156 | 0 | 17 |
+| sample name (Yan 2018, no genebank number) | 13 | 0 | 13 | 0 |
+| **all** | 281 | 224 (none ambiguous) | 57 | 22 |
+
+Of the 224 matched accessions, 58 have a scored GRIN race (164 have no GRIN race observation,
+mostly the recent PI 66xxxx accessions; one is conflicting, one Unknown). Agreement on those 58
+(Wilson 95% intervals):
+
+| Frontiers race | n | same race | basic vs its intermediate | intermediates sharing a parent | different | exact agreement |
+|---|---|---|---|---|---|---|
+| Bicolor | 2 | 1 | 0 | 0 | 1 | 0.50 [0.09, 0.91] |
+| Guinea | 9 | 7 | 1 | 0 | 1 | 0.78 [0.45, 0.94] |
+| Caudatum | 17 | 13 | 3 | 0 | 1 | 0.76 [0.53, 0.90] |
+| Kafir | 5 | 0 | 2 | 0 | 3 | 0.00 [0.00, 0.43] |
+| Durra | 17 | 2 | 7 | 0 | 8 | 0.12 [0.03, 0.34] |
+| Intermediate | 8 | 0 | 2 | 4 | 2 | 0.00 [0.00, 0.32] |
+| **all** | 58 | 23 | 15 | 4 | 16 | **0.40 [0.28, 0.53]** |
+| both name a basic race | 29 | 23 | | | 6 | **0.79 [0.62, 0.90]** |
+
+What this means:
+
+- **Two curators agree on the race of only 40% of shared accessions** (66% if a basic race and
+  one of its intermediates count as agreeing). When both name a basic race, they agree on 79%.
+  This is the label ceiling of any race score on single-source labels.
+- Most disagreement is about intermediates. Frontiers' Durra accessions from Ethiopia (PI 276xxx)
+  are Durra-bicolor (7) or Kafir-caudatum (4) in GRIN. These are one GRIN observation each.
+- Kafir is the least reliable race: none of its 5 shared accessions agree exactly.
+- Every mismatched GRIN label rests on **one** GRIN study. Labels confirmed by a second source are
+  the only ones a sealed test can trust (`docs/architecture/type-evaluation-protocol.md`, 5.2).
+- The sample is small and not random: Frontiers chose accessions for genomic race diversity. The
+  intervals are wide. Treat the numbers as a warning about label noise, not as a precise rate.
+
 ### Race model plan (T4, #24)
 
 Trained and scored once on test as race-v1 (T9, #32); results below. The plan as followed:

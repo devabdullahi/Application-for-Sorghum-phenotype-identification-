@@ -32,6 +32,7 @@ from sorghum_model.settings import (
     GrinDescriptorSettings,
     LabelReviewSettings,
     PublicDatasetSettings,
+    RaceCrosswalkSettings,
     RaceGateSettings,
     RaceRuleSearchSettings,
     RaceTrainingSettings,
@@ -61,6 +62,11 @@ DEFAULT_GRIN_DESCRIPTORS = DEFAULT_MANIFEST_DIR / "cultivar-grin-descriptors.csv
 # GRIN pages saved by grin-descriptors; cultivar-split reads the image study pages from here.
 DEFAULT_GRIN_PAGE_CACHE = DEFAULT_CULTIVAR_DATA_ROOT / "grin-descriptor-pages"
 DEFAULT_CULTIVAR_SPLIT = MODEL_DIR / "splits" / "cultivar-grin-v1.csv"
+# Race crosswalk (race_crosswalk.py): GRIN search and detail pages are cached apart from the
+# study pages, and the Frontiers workbook is downloaded next to them.
+DEFAULT_GRIN_ACCESSION_PAGE_CACHE = DEFAULT_CULTIVAR_DATA_ROOT / "grin-accession-pages"
+DEFAULT_FRONTIERS_TABLE = DEFAULT_CULTIVAR_DATA_ROOT / "frontiers-2023" / "tables.xlsx"
+DEFAULT_RACE_CROSSWALK = DEFAULT_MANIFEST_DIR / "race-crosswalk-frontiers.csv"
 # Names the cultivar split scheme; see SplitSettings.salt.
 CULTIVAR_SPLIT_SALT = "cultivar-grin-v1"
 # Same cadence as the species downloaders: losing at most this many rows on a crash is cheap,
@@ -81,6 +87,7 @@ def main(argv: list[str] | None = None) -> int:
     _add_grin_download(commands)
     _add_cultivar_split(commands)
     _add_grin_descriptors(commands)
+    _add_race_crosswalk(commands)
     _add_review_labels(commands)
     _add_split(commands)
     _add_train(commands)
@@ -668,6 +675,90 @@ def _run_grin_descriptors(arguments) -> None:
     downloaded = {record.cultivar_label for record in read_cultivar_manifest(arguments.image_manifest)}
     for line in grin_descriptors.coverage_report(observations, accessions, downloaded):
         print(line)
+
+
+def _add_race_crosswalk(commands) -> None:
+    command = commands.add_parser(
+        "race-crosswalk",
+        help="Match the Frontiers 2023 race panel to GRIN accessions and report race agreement.",
+    )
+    command.add_argument(
+        "--frontiers-table",
+        type=Path,
+        default=DEFAULT_FRONTIERS_TABLE,
+        help="The article's table workbook; downloaded from figshare when missing.",
+    )
+    command.add_argument(
+        "--page-cache",
+        type=Path,
+        default=DEFAULT_GRIN_PAGE_CACHE,
+        help="GRIN race study pages (from grin-descriptors); fetched only when missing.",
+    )
+    command.add_argument(
+        "--accession-page-cache",
+        type=Path,
+        default=DEFAULT_GRIN_ACCESSION_PAGE_CACHE,
+        help="GRIN search and accession detail pages are kept here, so a rerun fetches nothing.",
+    )
+    command.add_argument("--split", type=Path, default=DEFAULT_CULTIVAR_SPLIT)
+    command.add_argument("--out", type=Path, default=DEFAULT_RACE_CROSSWALK)
+    command.set_defaults(run=_run_race_crosswalk)
+
+
+def _run_race_crosswalk(arguments) -> None:
+    from collections import Counter
+
+    from sorghum_model import grin_descriptors, race_crosswalk
+    from sorghum_model.cultivar_manifest import read_cultivar_split
+    from sorghum_model.cultivar_races import race_labels
+    from sorghum_model.downloads import RequestPacer, download_file, get_text
+    from sorghum_model.frontiers_races import FRONTIERS_TABLE_MD5, FRONTIERS_TABLE_URL, read_frontiers_table
+
+    download_file(FRONTIERS_TABLE_URL, arguments.frontiers_table, expected_md5=FRONTIERS_TABLE_MD5)
+    samples = read_frontiers_table(arguments.frontiers_table)
+    print(f"{len(samples)} Frontiers samples, {sum(bool(s.genebank_number) for s in samples)} with a genebank number")
+
+    settings = RaceCrosswalkSettings()
+    pacer = RequestPacer(settings.seconds_between_requests)
+    fetch_accession_page = grin_descriptors.CachedPageFetcher(
+        arguments.accession_page_cache,
+        lambda url: get_text(url, timeout_seconds=settings.page_timeout_seconds),
+        pacer,
+    )
+    identities = {}
+    for number in sorted({sample.genebank_number for sample in samples}):
+        identities[number] = race_crosswalk.resolve_genebank_number(
+            number, fetch_accession_page, settings.max_candidates_per_search
+        )
+        print(f"  {number or '(sample name)'}: {identities[number].status.value}", flush=True)
+
+    matched = {i.detail.accession for i in identities.values() if i.detail is not None}
+    study_settings = GrinDescriptorSettings()
+    fetch_study_page = grin_descriptors.CachedPageFetcher(
+        arguments.page_cache,
+        lambda url: get_text(url, timeout_seconds=study_settings.study_page_timeout_seconds),
+        pacer,
+    )
+    observations = list(grin_descriptors.fetch_observations(matched, fetch_study_page, [grin_descriptors.RACE]))
+    races = race_labels(matched, observations)
+    race_studies = Counter(accession for accession, _ in {(o.accession, o.study) for o in observations})
+    split_of = {row["cultivar_label"]: row["accession_split"] for row in read_cultivar_split(arguments.split)}
+
+    rows = []
+    for sample in samples:
+        identity = identities[sample.genebank_number]
+        accession = identity.detail.accession if identity.detail else ""
+        rows.append(
+            race_crosswalk.crosswalk_row(
+                sample, identity, races.get(accession), race_studies[accession], split_of.get(accession, "")
+            )
+        )
+    race_crosswalk.write_crosswalk(rows, arguments.out)
+    lines = race_crosswalk.crosswalk_report(rows)
+    summary = arguments.out.with_name(f"{arguments.out.stem}-summary.txt")
+    summary.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print("\n".join(lines))
+    print(f"{len(rows)} rows written to {arguments.out}; summary in {summary}")
 
 
 def _add_cultivar_split(commands) -> None:

@@ -307,6 +307,33 @@ class GrinDescriptorSettings:
 
 
 @dataclass(frozen=True)
+class RaceCrosswalkSettings:
+    """How `race-crosswalk` looks accessions up on GRIN-Global's public search and detail pages.
+
+    Attributes:
+        seconds_between_requests: pace of uncached page fetches. Two seconds: the image download
+            is finished, so this command is GRIN's only client from this team, and a search page
+            answers in one to three seconds. Initial guess; slow down if GRIN answers 5xx.
+        max_candidates_per_search: how many sorghum hits of one search are opened to look for
+            the number. GRIN's search is fuzzy, but an accession that lists the number ranks in
+            its first rows; ten keeps a rare second listing visible (ambiguous) at a bounded cost.
+        page_timeout_seconds: socket read timeout per page; a detail page is about 200 kB.
+    """
+
+    seconds_between_requests: float = 2.0
+    max_candidates_per_search: int = 10
+    page_timeout_seconds: float = 120.0
+
+    def __post_init__(self) -> None:
+        if self.seconds_between_requests < 1:
+            raise ValueError("seconds_between_requests must be at least 1 (GRIN asks for polite clients)")
+        if not 1 <= self.max_candidates_per_search <= 50:
+            raise ValueError("max_candidates_per_search must be in [1, 50]")
+        if not 30 <= self.page_timeout_seconds <= 600:
+            raise ValueError("page_timeout_seconds must be in [30, 600]")
+
+
+@dataclass(frozen=True)
 class RaceEvaluationSettings:
     """When the race model returns a group of races, and when it answers "unrecognized".
 
