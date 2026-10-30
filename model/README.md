@@ -355,6 +355,96 @@ answered a parent of the true intermediate is in the group 0.940 (Guinea-kafir 0
 0.86-1.0). race-v1 predates the #36 image fix; its numbers above are its fixed model re-run on
 the current files, with nothing re-chosen.
 
+### Basic-race locked evaluation and error analysis (T18 #44, 2026-10-30)
+
+**Locked record.** The test numbers below are basic-race-v1's single scoring, copied unchanged
+from `basic-race-v1.json` and `basic-race-v1-report.txt`. Nothing here was re-scored on test.
+
+- **Split manifest:** `model/splits/cultivar-grin-v1.csv`, column `accession_split`, sha256
+  `62b79ec59dac20c74a934d2b7e26b4dc04fcf01a520c1357a8badba92970aa52`; photo manifest
+  `model/manifests/cultivar-grin.csv`, sha256 `1c474aadd9797a65f96377280a4d476ef25a76bcf27b701dc897cd7f22c630f8`.
+  Both checksums match the `provenance` block of `basic-race-v1.json`. Basic-race accessions only:
+  2,930 train / 645 validation / 648 test photos.
+- **Model file:** `basic-race-v1.tflite`, 2,713,712 bytes, sha256 `760da7ffed9c714697faca29c37fbb00c632b5a02eb0eea9fa55129866f327b8`,
+  converted with TF 2.17.1. INT8 temperature 1.385, fitted on INT8 validation outputs.
+- **Rules:** both were chosen at the same time on INT8 validation, before test was scored
+  (`choose_answer_rule`, coverage margin 0.02, groups of at most two races):
+
+| Rule | Chosen for | mass, max group | validation coverage / selective | **test** coverage / selective / over all photos |
+|---|---|---|---|---|
+| gate rule | 0.80 coverage | 0.89, 2 | 0.833 / 0.965 | **0.793 / 0.965 / 0.765** (gate missed: coverage < 0.80) |
+| second rule | 0.90 coverage | 0.81, 2 | 0.935 / 0.944 | **0.904 / 0.945 / 0.855** (reported only) |
+
+Test top-1 is 0.861 (INT8) and ECE is 0.030 after temperature. The gate is judged on the gate
+rule alone. The second rule passing 0.89 at >= 0.80 coverage does **not** count as a pass,
+because it would be a choice made after seeing the test result. basic-race-v1 is an
+experimental output. It does not meet the 89% goal (ADR-0011), which is defined over the
+fifteen races.
+
+**Per-race outcome on test, gate rule** (counts from the report's confusion matrix and
+in-group recall. "Wrong" means answered without the true race in the group):
+
+| True race | photos (train photos) | in group (hit) | unrecognized | wrong | top-1 race of the answered photos |
+|---|---|---|---|---|---|
+| Caudatum | 371 (1,595) | 306 | 59 | 6 | Caudatum 302, Durra 8, Bicolor 2 |
+| Durra | 191 (940) | 157 | 31 | 3 | Durra 151, Caudatum 9 |
+| Guinea | 39 (153) | 18 | 19 | 2 | Guinea 13, Caudatum 7 |
+| Bicolor | 25 (114) | 11 | 10 | 4 | Bicolor 7, Durra 4, Caudatum 3, Guinea 1 |
+| Kafir | 22 (128) | 4 | 15 | 3 | Durra 3, Caudatum 2, Kafir 2 |
+| **all** | 648 | 496 | 134 | 18 | |
+
+Confusion counts (rows: true race; columns: top-1 race of an answered photo, then
+unrecognized):
+
+| | Bicolor | Caudatum | Durra | Guinea | Kafir | unrecognized |
+|---|---|---|---|---|---|---|
+| Bicolor | 7 | 3 | 4 | 1 | 0 | 10 |
+| Caudatum | 2 | 302 | 8 | 0 | 0 | 59 |
+| Durra | 0 | 9 | 151 | 0 | 0 | 31 |
+| Guinea | 0 | 7 | 0 | 13 | 0 | 19 |
+| Kafir | 0 | 2 | 3 | 0 | 2 | 15 |
+
+What the errors show:
+
+- **Low Guinea, Bicolor and Kafir recall is mostly abstention, not wrong answers.** Of their 53
+  misses, 44 are "unrecognized" and 9 are wrong. These three races are 13% of test photos but
+  33% of the abstentions (44 of 134) and half the wrong answers (9 of 18). When they are
+  answered, selective accuracy is Guinea 18/20, Bicolor 11/15 and Kafir 4/7, against 306/312
+  for Caudatum and 157/160 for Durra.
+- **Errors flow toward the two large races.** Every off-diagonal Guinea answer is Caudatum (7).
+  Bicolor goes to Durra (4) and Caudatum (3), and Kafir to Durra (3) and Caudatum (2). The minor
+  races are almost never confused with each other (one Bicolor answered as Guinea). This fits
+  the training support: Caudatum and Durra have 6-14x the training photos of the three minor races, and
+  the loss was unweighted (`balanced_class_weights: false`).
+- **The pattern was already on validation.** At the gate rule, validation Kafir in-group recall
+  was 0 of 25 (19 unrecognized), Bicolor 6 of 21 and Guinea 13 of 25. So the test result was
+  not a surprise from a lucky or unlucky split.
+- **A looser rule moves minor-race abstentions into wrong answers.** At the second rule
+  (0.81), Kafir is answered on 15 of 22 test photos, but only 5 are right (wrong top-1:
+  Caudatum 7, Durra 5). Bicolor errors grow from 4 to 6 and Guinea from 2 to 5. A rule change
+  cannot fix minor-race recall. It needs more minor-race photos or class weighting (a new model
+  version and a fresh test).
+- **Why the gate rule lost coverage on test (0.833 to 0.793).** The race mix explains only about
+  0.005: test has more minor-race photos (86 of 648, against 71 of 645). Re-weighting the
+  validation per-race coverage by the test mix gives 0.828. Most of the drop is in the large
+  races: Caudatum coverage fell from 0.897 on validation to 0.841 on test, and Durra from
+  0.862 to 0.838. The 0.02 margin was too small for a 645-photo validation split. The binomial
+  SD of a coverage near 0.83 is about 0.015 on each split, so about 0.021 for the difference
+  between them.
+
+**Proposed revised rule. Chosen on validation only, NOT YET TESTED.** Keep the gate rule
+search, but raise the coverage margin from 0.02 to 0.05. That is about 2.4 SD of the
+validation-to-test difference, and it covers both drops seen so far (basic-race-v1 0.040,
+race-v1 0.032). On the same INT8 validation outputs this chooses **mass 0.87, max group 2**:
+validation coverage 0.859, selective accuracy 0.960, accuracy over all photos 0.825
+(Kafir 1/25, Bicolor 7/21, Guinea 14/25). This rule was never scored on test. The existing test
+split has already been seen, so a claim with this rule needs a fresh held-out set (for example
+the phone ship test, ADR-0011). `RaceRuleSearchSettings.coverage_margin` keeps its default
+(0.02) until that decision is made. Reproduce: the validation outputs come from
+`basic-race-v1.tflite` on the 645 validation photos with temperature 1.385, and
+`choose_answer_rule(..., replace(BASIC_RACE_RULE_SEARCH, coverage_margin=0.05))` gives the rule.
+The 0.02 margin gives back the locked 0.89 rule with 0.8326 coverage, which checks the outputs.
+
 ## Trait heads (T12, #35, 2026-10-30)
 
 Learned trait heads trained from GRIN descriptors on the GRIN photos, scored once on the
