@@ -134,3 +134,55 @@ def test_coverage_report_counts_accessions_and_majority_race():
     report = "\n".join(coverage_report(rows, photographed={"PI 1", "PI 2"}, downloaded={"PI 1"}))
     assert "Durra                1" in report
     assert "1 with conflicting plantings" in report
+
+
+class FlakyServer:
+    """Serves pages from a dict and fails (like a read timeout) once it has served `fail_after`."""
+
+    def __init__(self, pages: dict[str, str], fail_after: int | None = None) -> None:
+        self.pages = pages
+        self.fail_after = fail_after
+        self.requested: list[str] = []
+
+    def __call__(self, url: str) -> str:
+        if self.fail_after is not None and len(self.requested) >= self.fail_after:
+            raise TimeoutError("The read operation timed out")
+        self.requested.append(url)
+        return self.pages[url]
+
+
+def test_rerun_after_a_timeout_fetches_only_the_missing_pages(tmp_path):
+    from sorghum_model.downloads import RequestPacer
+    from sorghum_model.grin_descriptors import CachedPageFetcher, fetch_observations
+
+    base = "https://npgsweb.ars-grin.gov/gringlobal/"
+    detail_url = f"{base}descriptordetail.aspx?id=69065"
+    study_urls = [f"{base}methodaccession.aspx?id1=69065&id2={study_id}" for study_id in (1, 2)]
+    pages = {
+        detail_url: (
+            '<a href="method.aspx?id=1">S1</a><a href="methodaccession.aspx?id1=69065&id2=1">n</a>'
+            '<a href="method.aspx?id=2">S2</a><a href="methodaccession.aspx?id1=69065&id2=2">n</a>'
+        ),
+        study_urls[0]: STUDY_PAGE,
+        study_urls[1]: STUDY_PAGE,
+    }
+    no_wait = RequestPacer(0)
+
+    first_server = FlakyServer(pages, fail_after=2)  # detail page and study 1, then a timeout
+    with pytest.raises(TimeoutError):
+        list(fetch_observations({"PI 533903"}, CachedPageFetcher(tmp_path, first_server, no_wait), [RACE]))
+
+    second_server = FlakyServer(pages)
+    rows = list(fetch_observations({"PI 533903"}, CachedPageFetcher(tmp_path, second_server, no_wait), [RACE]))
+
+    assert second_server.requested == [study_urls[1]]
+    assert [row.study for row in rows] == ["S1", "S2"]
+    assert not list(tmp_path.glob("*.tmp"))  # the failed page left no partial file
+
+
+def test_cache_file_names_are_stable_and_distinct():
+    from sorghum_model.grin_descriptors import cache_file_name
+
+    url = "https://npgsweb.ars-grin.gov/gringlobal/methodaccession.aspx?id1=69065&id2=21001"
+    assert cache_file_name(url) == "methodaccession_id1-69065_id2-21001.html"
+    assert cache_file_name(url.replace("21001", "21002")) != cache_file_name(url)

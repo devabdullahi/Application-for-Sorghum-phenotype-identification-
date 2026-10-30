@@ -28,6 +28,7 @@ from sorghum_model.manifest import (
 from sorghum_model.settings import (
     DownloadSettings,
     ExportSettings,
+    GrinDescriptorSettings,
     LabelReviewSettings,
     PublicDatasetSettings,
     SplitSettings,
@@ -49,9 +50,6 @@ DEFAULT_SPLIT_MANIFEST = MODEL_DIR / "splits" / "species-v1.csv"
 DEFAULT_CULTIVAR_DATA_ROOT = DEFAULT_DATA_ROOT / "cultivar"
 DEFAULT_GRIN_MANIFEST = DEFAULT_MANIFEST_DIR / "cultivar-grin.csv"
 DEFAULT_GRIN_DESCRIPTORS = DEFAULT_MANIFEST_DIR / "cultivar-grin-descriptors.csv"
-# Seconds between this command's requests. Slower than the shared one-per-second pace because
-# `grin-download` runs against the same (slow) server at the same time and must not be slowed.
-GRIN_DESCRIPTOR_SECONDS_BETWEEN_REQUESTS = 6.0
 DEFAULT_CULTIVAR_SPLIT = MODEL_DIR / "splits" / "cultivar-grin-v1.csv"
 # Names the cultivar split scheme; see SplitSettings.salt.
 CULTIVAR_SPLIT_SALT = "cultivar-grin-v1"
@@ -591,6 +589,12 @@ def _add_grin_descriptors(commands) -> None:
     )
     command.add_argument("--out", type=Path, default=DEFAULT_GRIN_DESCRIPTORS)
     command.add_argument(
+        "--page-cache",
+        type=Path,
+        default=DEFAULT_CULTIVAR_DATA_ROOT / "grin-descriptor-pages",
+        help="Fetched GRIN pages are kept here, so a rerun skips them.",
+    )
+    command.add_argument(
         "--image-manifest",
         type=Path,
         default=DEFAULT_GRIN_MANIFEST,
@@ -604,16 +608,20 @@ def _run_grin_descriptors(arguments) -> None:
     from sorghum_model.cultivar_manifest import read_cultivar_manifest
     from sorghum_model.downloads import RequestPacer, get_text
 
-    pacer = RequestPacer(GRIN_DESCRIPTOR_SECONDS_BETWEEN_REQUESTS)
+    settings = GrinDescriptorSettings()
+    fetch_page = grin_descriptors.CachedPageFetcher(
+        arguments.page_cache,
+        lambda url: get_text(url, timeout_seconds=settings.study_page_timeout_seconds),
+        RequestPacer(settings.seconds_between_requests),
+    )
     # Every photographed accession, not only those downloaded so far, so the file is complete
     # once the image download finishes.
     accessions: set[str] = set()
     for study in grin.SORGHUM_IMAGE_STUDIES:
-        pacer.wait()
-        accessions.update(image.accession_number for image in grin.parse_study_page(get_text(study.page_url)))
+        accessions.update(image.accession_number for image in grin.parse_study_page(fetch_page(study.page_url)))
     print(f"{len(accessions)} photographed accessions", flush=True)
 
-    observations = list(grin_descriptors.fetch_observations(accessions, pacer))
+    observations = list(grin_descriptors.fetch_observations(accessions, fetch_page))
     observations += grin_descriptors.combine_panicle_observations(observations)
     grin_descriptors.write_observations(observations, arguments.out)
     print(f"{len(observations)} observations written to {arguments.out}")
