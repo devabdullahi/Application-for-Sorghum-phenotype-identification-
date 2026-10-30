@@ -27,6 +27,7 @@ from sorghum_model.manifest import (
     write_manifest,
 )
 from sorghum_model.settings import (
+    CoreShortlistSettings,
     DownloadSettings,
     ExportSettings,
     GrinDescriptorSettings,
@@ -69,6 +70,7 @@ DEFAULT_CULTIVAR_SPLIT = MODEL_DIR / "splits" / "cultivar-grin-v1.csv"
 DEFAULT_GRIN_ACCESSION_PAGE_CACHE = DEFAULT_CULTIVAR_DATA_ROOT / "grin-accession-pages"
 DEFAULT_FRONTIERS_TABLE = DEFAULT_CULTIVAR_DATA_ROOT / "frontiers-2023" / "tables.xlsx"
 DEFAULT_RACE_CROSSWALK = DEFAULT_MANIFEST_DIR / "race-crosswalk-frontiers.csv"
+DEFAULT_CORE_SHORTLIST = DEFAULT_MANIFEST_DIR / "core-accession-shortlist.csv"
 # Names the cultivar split scheme; see SplitSettings.salt.
 CULTIVAR_SPLIT_SALT = "cultivar-grin-v1"
 # Same cadence as the species downloaders: losing at most this many rows on a crash is cheap,
@@ -90,6 +92,7 @@ def main(argv: list[str] | None = None) -> int:
     _add_cultivar_split(commands)
     _add_grin_descriptors(commands)
     _add_race_crosswalk(commands)
+    _add_core_shortlist(commands)
     _add_review_labels(commands)
     _add_split(commands)
     _add_train(commands)
@@ -759,6 +762,87 @@ def _run_race_crosswalk(arguments) -> None:
         )
     race_crosswalk.write_crosswalk(rows, arguments.out)
     lines = race_crosswalk.crosswalk_report(rows)
+    summary = arguments.out.with_name(f"{arguments.out.stem}-summary.txt")
+    summary.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print("\n".join(lines))
+    print(f"{len(rows)} rows written to {arguments.out}; summary in {summary}")
+
+
+def _add_core_shortlist(commands) -> None:
+    command = commands.add_parser(
+        "core-shortlist",
+        help="Rank GRIN accessions per basic race to request as seed for the type evaluation.",
+    )
+    command.add_argument(
+        "--page-cache",
+        type=Path,
+        default=DEFAULT_GRIN_PAGE_CACHE,
+        help="GRIN descriptor and study pages (from grin-descriptors); fetched only when missing.",
+    )
+    command.add_argument("--crosswalk", type=Path, default=DEFAULT_RACE_CROSSWALK)
+    command.add_argument("--split", type=Path, default=DEFAULT_CULTIVAR_SPLIT)
+    command.add_argument("--out", type=Path, default=DEFAULT_CORE_SHORTLIST)
+    command.set_defaults(run=_run_core_shortlist)
+
+
+def _run_core_shortlist(arguments) -> None:
+    from collections import Counter, defaultdict
+
+    from sorghum_model import core_shortlist, grin_descriptors
+    from sorghum_model.cultivar_manifest import read_cultivar_split
+    from sorghum_model.cultivar_races import race_labels
+    from sorghum_model.downloads import RequestPacer, get_text
+    from sorghum_model.grin_accessions import parse_study_roster
+    from sorghum_model.race_crosswalk import basic_parents, read_crosswalk
+
+    study_settings = GrinDescriptorSettings()
+    fetch_page = grin_descriptors.CachedPageFetcher(
+        arguments.page_cache,
+        lambda url: get_text(url, timeout_seconds=study_settings.study_page_timeout_seconds),
+        RequestPacer(study_settings.seconds_between_requests),
+    )
+    race = grin_descriptors.RACE
+    roster_rows, race_observations = [], []
+    race_page = f"{grin_descriptors.GRIN_BASE_URL}descriptordetail.aspx?id={race.descriptor_id}"
+    for study, study_url in grin_descriptors.parse_descriptor_studies(fetch_page(race_page), race.descriptor_id):
+        page = fetch_page(study_url)
+        rows_of_study = parse_study_roster(page)
+        roster_rows += rows_of_study
+        accessions = {row.accession for row in rows_of_study}
+        race_observations += grin_descriptors.parse_observations(page, race, study, study_url, accessions)
+    first_roster = {}
+    for row in roster_rows:
+        first_roster.setdefault(row.accession, row)
+    races = race_labels(first_roster, race_observations)
+    race_studies = Counter(accession for accession, _ in {(o.accession, o.study) for o in race_observations})
+    basic = {accession for accession, label in races.items() if len(basic_parents(label.race)) == 1}
+    print(f"{len(first_roster)} accessions on GRIN race study pages, {len(basic)} labelled one basic race", flush=True)
+
+    trait_descriptors = [d for d in grin_descriptors.DESCRIPTORS if d is not race]
+    observations = list(grin_descriptors.fetch_observations(basic, fetch_page, trait_descriptors))
+    observations += grin_descriptors.combine_panicle_observations(observations)
+    traits_of = defaultdict(set)
+    for observation in observations:
+        if observation.ibpgr_state and observation.trait_id:
+            traits_of[observation.accession].add(observation.trait_id)
+
+    orderable = core_shortlist.accession_availability(roster_rows)
+    frontiers = core_shortlist.frontiers_by_accession(read_crosswalk(arguments.crosswalk))
+    split_of = {row["cultivar_label"]: row["accession_split"] for row in read_cultivar_split(arguments.split)}
+    passports = [
+        core_shortlist.AccessionPassport(
+            roster=first_roster[accession],
+            orderable=orderable[accession],
+            race=races[accession],
+            race_studies=race_studies[accession],
+            traits_with_states=frozenset(traits_of[accession]),
+            frontiers=frontiers.get(accession),
+            grin_accession_split=split_of.get(accession, ""),
+        )
+        for accession in sorted(basic)
+    ]
+    rows, lines = core_shortlist.shortlist(passports, CoreShortlistSettings())
+    core_shortlist.write_shortlist(rows, arguments.out)
     summary = arguments.out.with_name(f"{arguments.out.stem}-summary.txt")
     summary.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
