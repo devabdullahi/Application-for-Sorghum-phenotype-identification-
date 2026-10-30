@@ -825,6 +825,11 @@ def _add_race_photo_arguments(command) -> None:
     command.add_argument("--splits", type=Path, default=DEFAULT_CULTIVAR_SPLIT)
     command.add_argument("--data-root", type=Path, default=DEFAULT_CULTIVAR_DATA_ROOT)
     command.add_argument("--run-dir", type=Path, required=True)
+    command.add_argument(
+        "--basic-races-only", action="store_true",
+        help="The basic-race output (T14, #37): train and score on the five basic races only; "
+        "intermediates are reported apart (race_photos.split_basic_and_intermediate).",
+    )
 
 
 def _add_race_train(commands) -> None:
@@ -844,10 +849,12 @@ def _add_race_train(commands) -> None:
 
 
 def _run_race_train(arguments) -> None:
-    from sorghum_model.race_photos import read_race_photos
+    from sorghum_model.race_photos import read_race_photos, split_basic_and_intermediate
     from sorghum_model.race_training import train_race_model
 
     photos = read_race_photos(arguments.manifest, arguments.splits)
+    if arguments.basic_races_only:
+        photos, _ = split_basic_and_intermediate(photos)
     train_race_model(
         photos, arguments.data_root, arguments.starting_model, arguments.run_dir, RaceTrainingSettings(),
         resume=arguments.resume,
@@ -868,10 +875,15 @@ def _add_race_export(commands) -> None:
 
 
 def _run_race_export(arguments) -> None:
-    from sorghum_model.race_export import export_race_model
-    from sorghum_model.race_photos import read_race_photos
+    from sorghum_model.race_export import BASIC_RACE_RULE_SEARCH, export_race_model
+    from sorghum_model.race_photos import read_race_photos, split_basic_and_intermediate
 
     photos = read_race_photos(arguments.manifest, arguments.splits)
+    intermediates = []
+    model_name, search = "race", RaceRuleSearchSettings()
+    if arguments.basic_races_only:
+        photos, intermediates = split_basic_and_intermediate(photos)
+        model_name, search = "basic-race", BASIC_RACE_RULE_SEARCH
     provenance = {
         "splitManifestSha256": sha256_of_file(arguments.splits),
         "imageManifestSha256": sha256_of_file(arguments.manifest),
@@ -879,12 +891,12 @@ def _run_race_export(arguments) -> None:
     }
     document = export_race_model(
         arguments.run_dir, photos, arguments.data_root, arguments.version, arguments.out_dir,
-        ExportSettings(), RaceRuleSearchSettings(), RaceGateSettings(), provenance,
+        ExportSettings(), search, RaceGateSettings(), provenance,
+        model_name=model_name, intermediate_photos=intermediates,
     )
     gate = document["gate"]
-    print(f"exported race-v{arguments.version} to {arguments.out_dir}; gate "
+    print(f"exported {model_name}-v{arguments.version} to {arguments.out_dir}; gate "
           + ("passed" if gate["passed"] else "missed: " + "; ".join(gate["problems"])))
-
 
 # The catalogue traits a GRIN panicle-and-grain photo shows and GRIN labels (`cultivar_traits`).
 # Seed weight is a candidate for the probe only: the catalogue reads it as a measured trait.

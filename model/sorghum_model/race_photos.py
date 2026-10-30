@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from sorghum_model.cultivar_manifest import find_accession_split_leaks, read_cultivar_manifest, read_cultivar_split
+from sorghum_model.race_evaluation import BASIC_RACES
 from sorghum_model.splits import Split
 
 
@@ -104,3 +105,19 @@ def undersized_races(
             if counts[(race, split)] < minimum:
                 problems.append(f"{race}: {counts[(race, split)]} {split.value} photos (minimum {minimum})")
     return problems
+
+
+def split_basic_and_intermediate(photos: Sequence[RacePhoto]) -> tuple[list[RacePhoto], list[RacePhoto]]:
+    """(photos of the five basic races, photos of the ten intermediates), for the basic-race
+    output (T14, #37).
+
+    Label rule: the basic-race output is trained and scored only on accessions GRIN names as
+    one of the five basic races. Intermediates are excluded from its training and its headline
+    score rather than given a split target (half one parent, half the other): an intermediate
+    is not "both parents at once", and a soft target would teach the head that two basic races
+    look alike. How the output answers intermediate photos is reported separately (a hit when
+    a parent is in the returned group), never folded into the headline.
+    """
+    basic = [photo for photo in photos if photo.race in BASIC_RACES]
+    intermediate = [photo for photo in photos if photo.race not in BASIC_RACES]
+    return basic, intermediate

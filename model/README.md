@@ -316,6 +316,45 @@ Durra (0.81) are found, and most intermediates are not (Kafir-caudatum 0.18, Cau
   accession, and many more photos of the ten intermediates; a measured inter-rater agreement on
   GRIN race labels would show the ceiling.
 
+### Basic-race output (basic-race-v1, T14 #37, 2026-10-30)
+
+A separately named output over the five basic races (Bicolor, Caudatum, Durra, Guinea, Kafir).
+It is **not** the 15-race result and never replaces it.
+
+- **Label rule** (`race_photos.split_basic_and_intermediate`): trained and scored only on
+  accessions GRIN names as one basic race (4,223 photos: 2,930 / 645 / 648). The ten
+  intermediates are **excluded**, not given a split parent target: an intermediate is not both
+  parents at once, and a half-and-half target would teach the head that two basic races look
+  alike. How the output answers intermediates is reported apart (below).
+- **Model and rule:** same pipeline as race-v1 (`race-train --basic-races-only`,
+  `race-export --basic-races-only`): traits-v2 backbone, 10 head + 10 fine-tune epochs, INT8,
+  temperature (1.385) and answer rule chosen on INT8 validation. Groups hold at most two basic
+  races (`BASIC_RACE_RULE_SEARCH`, set before scoring: three of five names most of the
+  taxonomy). Test scored once.
+
+| Test, 648 photos | rule (mass, max group) | coverage | selective acc. | acc. over all photos | mean group |
+|---|---|---|---|---|---|
+| INT8, 80% rule | 0.89, 2 | 0.793 | **0.965** | 0.765 | 1.29 |
+| float, same rule | | 0.809 | 0.958 | 0.775 | 1.32 |
+| INT8, 90% rule | 0.81, 2 | 0.904 | 0.945 | 0.855 | 1.26 |
+| majority baseline (Caudatum) | | 1.000 | 0.573 | 0.573 | 1.00 |
+| planting baseline | | 1.000 | 0.784 | 0.784 | 1.00 |
+| race-v1 on the same photos, read at basic level (lenient: a parent in the group) | 0.62, 3 | 0.852 | 0.986 | | |
+| race-v1, strict (the group's parents are exactly the true basic race) | | 0.852 | 0.531 | | |
+
+Top-1: 0.861 INT8 (race-v1's top race has the true basic race as a parent on 0.883 of these
+photos). ECE 0.045 before and 0.030 after temperature. The race gate (0.89 selective at >= 0.80
+coverage with the 80% rule) is **missed on coverage alone**: 0.793 on test against 0.833 on
+validation. The 90% rule, chosen on validation at the same time, reaches 0.945 at 0.904 on
+test; it is reported, not substituted for the gate rule after the fact. Per-race in-group
+recall at the 80% rule: Caudatum 0.83, Durra 0.82, Guinea 0.46, Bicolor 0.44, Kafir 0.18 (22
+photos; mostly "unrecognized"). Report: `basic-race-v1-report.txt`.
+
+Intermediates (384 test photos, never trained on), same rule: answered 0.654, and among the
+answered a parent of the true intermediate is in the group 0.940 (Guinea-kafir 0.25, the rest
+0.86-1.0). race-v1 predates the #36 image fix; its numbers above are its fixed model re-run on
+the current files, with nothing re-chosen.
+
 ## Trait heads (T12, #35, 2026-10-30)
 
 Learned trait heads trained from GRIN descriptors on the GRIN photos, scored once on the
