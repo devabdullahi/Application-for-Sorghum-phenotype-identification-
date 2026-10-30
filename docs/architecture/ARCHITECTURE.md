@@ -232,7 +232,7 @@ sequenceDiagram
 
 ## 8. Migration from today
 
-Today: pure logic (`frame/ guidance/ quality/ sample/`, `session/CaptureFlow`) in `shared/` (steps 1-2), consumed by the Android app in `app/` and the iOS app in `ios/` through `Shared.framework` (step 3; the R3 device benchmark is still open).
+Today: pure logic (`frame/ guidance/ quality/ sample/`, `session/CaptureFlow`) in `shared/` (steps 1-2), consumed by the Android app in `../../app/` and the iOS app in `ios/` through `Shared.framework` (step 3; the R3 device benchmark is still open).
 
 1. **Create `shared/`** and move the pure packages unchanged (`frame`, `guidance`, `quality`, `sample`), replacing `Bitmap`/`Float` platform touch points with `PixelImage`. Move their JVM tests to `commonTest`. Android app depends on `shared/`; behaviour unchanged.
 2. **Move session logic** out of `CaptureViewModel` into `shared/session`; Android ViewModel becomes a thin adapter.
@@ -264,4 +264,5 @@ Steps 1–3 change no user-visible behaviour and should land before new features
 - Leaf-only early-season mode: useful given leaves carry ~3 traits?
 - Oldest iPhone / Android device to support? (sets R3 budget; iOS floor is iOS 17 today)
 - ~~LiteRT on iOS: CocoaPods or Swift Package Manager?~~ Decided: CocoaPods, TensorFlowLiteSwift 2.17.0 ([ADR-0007](adr/0007-litert-ios-via-cocoapods.md)).
+- LiteRT on Android: `com.google.ai.edge.litert:litert` 1.4.2, Interpreter API ([ADR-0010](adr/0010-litert-android-1-4.md), proposed).
 - Is a colour card on every board acceptable to users in the field?

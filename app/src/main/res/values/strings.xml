@@ -2,20 +2,26 @@
 <resources>
     <string name="app_name">Sorghum Capture</string>
 
-    <!-- Live guidance. The phone is held flat above the board, so "lower the top edge"
-         is clearer than "tilt forward", which depends on how the user is standing. -->
-    <string name="guidance_starting">Starting camera…</string>
-    <string name="guidance_tilt_top_down">Lower the top edge of the phone</string>
-    <string name="guidance_tilt_bottom_down">Lower the bottom edge of the phone</string>
-    <string name="guidance_tilt_left_down">Lower the left edge of the phone</string>
-    <string name="guidance_tilt_right_down">Lower the right edge of the phone</string>
-    <string name="guidance_no_sample">Place the sample inside the frame</string>
-    <string name="guidance_sample_cut_off">Sample is cut off. Move the phone farther away</string>
-    <string name="guidance_hold_steady">Hold steady…</string>
-    <string name="guidance_ready">Capturing…</string>
+    <!-- Tabs. -->
+    <string name="tab_history">History</string>
+    <string name="tab_capture">Capture</string>
+    <string name="tab_settings">Settings</string>
+
+    <!-- Capture tab. -->
+    <string name="capture_instruction">Fit the whole panicle in the rectangle.</string>
+
+    <!-- History tab. Photos are kept for this session only. -->
+    <string name="history_empty">No photos yet. Photos you take this session appear here.</string>
+    <plurals name="history_photo_count">
+        <item quantity="one">%1$d photo</item>
+        <item quantity="other">%1$d photos</item>
+    </plurals>
+    <string name="history_sorghum_count">%1$d sorghum</string>
+    <string name="history_not_sorghum_count">%1$d not sorghum</string>
+    <string name="history_retake_count">%1$d to retake</string>
+    <string name="history_not_checked_count">%1$d not checked for species</string>
 
     <!-- Post-capture check. -->
-    <string name="checking_photo">Checking photo…</string>
     <string name="photo_accepted">Photo accepted</string>
     <string name="rejected_no_sample">No sample found in the photo. Place the sample inside the frame and try again.</string>
     <string name="rejected_too_dark">Photo is too dark. Add more light and try again.</string>
@@ -23,6 +29,27 @@
     <string name="rejected_blurry">Photo is blurry. Hold the phone still and try again.</string>
     <string name="retake">Retake</string>
     <string name="try_again">Try again</string>
+
+    <!-- Species check (ADR-0006), shown with the accepted photo. Same wording as iOS. -->
+    <string name="species_unavailable_detail">Species check not installed yet: this photo was only checked for quality.</string>
+    <string name="species_sorghum_title">Sorghum</string>
+    <!-- %1$s is a whole percentage, e.g. "93%". -->
+    <string name="species_sorghum_detail">Photo accepted. Sorghum, %1$s sure.</string>
+    <string name="species_not_sorghum_title">Not sorghum</string>
+    <!-- %1$s is a look-alike plant name below, e.g. "maize". -->
+    <string name="species_look_alike_detail">This looks like %1$s, not sorghum.</string>
+    <string name="species_not_sorghum_detail">This does not look like sorghum.</string>
+    <string name="species_no_plant_title">No plant found</string>
+    <string name="species_no_plant_detail">Place the sample on the board inside the frame and retake.</string>
+    <string name="species_unsure_title">Not sure it is sorghum</string>
+    <string name="species_unsure_detail">Retake closer, in good light, or photograph another part of the plant.</string>
+
+    <!-- Look-alike plants the species model can name (model/sorghum_model/species_classes.py). -->
+    <string name="look_alike_johnson_grass">Johnson grass</string>
+    <string name="look_alike_maize">maize</string>
+    <string name="look_alike_sugarcane">sugarcane</string>
+    <string name="look_alike_pearl_millet">pearl millet</string>
+    <string name="look_alike_finger_millet">finger millet</string>
 
     <!-- Errors. -->
     <string name="camera_permission_needed">Camera permission is needed to photograph samples.</string>
