@@ -22,7 +22,7 @@ shells. The whole design is in [ARCHITECTURE.md](architecture/ARCHITECTURE.md).
 | Capture state machine moved from `CaptureViewModel` to `shared/session/CaptureFlow` | Done (step 2) | `main` (PR #3, merged) |
 | iOS app uses `Shared.framework` instead of Swift copies; Swift ports deleted | Done (step 3). Still open: R3 benchmark on a real iPhone (live green check under 5 ms/frame) and a real-device check | `main` (PR #3, merged) |
 | `shared/species` (`ImageModel` port, `ModelMetadata`, `SpeciesGate`) + LiteRT runner on iPhone + photo-library analysis | Done; bad output or a missing model gives "species not checked" (PR #18); waits for a trained model file | `main` (PR #4, PR #18) |
-| Species model ("is it sorghum?"): data sources, training, INT8 export | Pipeline merged (PR #11). Still **below the bar** (0.90 sorghum vs not-sorghum, INT8 within 2 points), so no model is in the app. Backbone now MobileNetV2, exported with TF 2.17 (ADR-0010). v2-2: 0.857 on test, INT8 3.2 points under float; its test split was defective. v2-3 trains on the fixed split | `feature/species-model-v2` |
+| Species model ("is it sorghum?"): data sources, training, INT8 export | Pipeline merged (PR #11). **`traits-v2` meets the bar** (v2-3: sorghum vs not-sorghum 0.932 on test, bar 0.90; INT8 1.2 points under float, bar 2). Backbone MobileNetV2, exported with TF 2.17 (ADR-0010). Not bundled yet: iOS parity test next | `feature/species-model-v2` |
 | Bundling `traits-vN` into iOS + model parity XCTest | Done; waits for a model that passes the bar | `main` (PR #12, merged) |
 | **Android species gate: LiteRT runner, asset loader, UI states** | **Paused** (2026-10-23: iPhone first). Work in progress kept on the branch, no PR | `feature/android-litert` |
 | Trait catalogue + `TraitEstimate` with noise floor (`shared/traits`) | Done | `main` (PR #7) |
@@ -157,7 +157,8 @@ Newest first. One line per change that someone on Android should know about.
   TensorFlowLiteSwift 2.17.0. Results on test, INT8: v2-1 (MobileNetV3 minimalistic) 0.765
   sorghum vs not, v2-2 (MobileNetV2) 0.857; bar 0.90. v2-2's split was defective (1,499
   Sorghum Disease photos chained into one near-duplicate group, all in test); that dataset
-  is now exempt and v2-3 retrains on the fixed split. The threshold is now the most
+  is now exempt. **v2-3 on the fixed split meets the bar: 0.932 on test, INT8 within 1.2
+  points of float; exported as `traits-v2`** (iOS parity test before bundling). The threshold is now the most
   accurate one on validation with >= 95% sorghum precision (ASSUMPTION, confirm).
   `traits-vN.json` gains only additive keys. Nothing for Android to change.
 

@@ -23,17 +23,22 @@ tool downloads photos.
   importers for the Mendeley Data and Figshare (GrainSet) datasets, folder importer, grouped
   splits, calibration maths, metadata format, training (resumable) and INT8 export code,
   unit tests. Manifests and the split are committed.
-- Runs so far, all below the ship bar (test split, INT8, TF 2.17 converter unless noted):
+- Runs so far (test split, INT8, TF 2.17 converter unless noted). **v2-3 meets the ship bar**
+  and is exported as `traits-v2`:
 
   | Run | Backbone | Sorghum-vs-not | Float / INT8 9-class |
   |---|---|---|---|
   | diag-1 | MobileNetV3-Small (TF 2.20) | 0.671 | 0.867 / 0.727 |
   | v2-1 | MobileNetV3-Small minimalistic | 0.765 | 0.780 / 0.693 |
   | v2-2 | MobileNetV2 1.0 | 0.857 (validation 0.936) | 0.842 / 0.810 |
+  | **v2-3** | MobileNetV2 1.0, corrected split | **0.932** (validation 0.941) | 0.877 / 0.865 |
 
   v2-1 and v2-2 were scored with today's threshold rule. v2-2 was evaluated on a
   **defective split**: 1,499 Sorghum Disease photos chained into one near-duplicate group,
-  all in test (see `SplitSettings`). v2-3 retrains on the corrected split.
+  all in test (see `SplitSettings`). v2-3 was trained and evaluated once on the corrected
+  split, which was frozen before training. v2-3 test details: 6,088 photos (43% sorghum),
+  sorghum precision 0.938 and recall 0.902, threshold 0.199, temperature 1.685, ECE 0.058
+  before and 0.013 after temperature scaling, INT8 top-1 agreement with float 0.960.
 - **Short classes:** finger millet and `no_plant` (see [Data reality](#data-reality)).
 - Long jobs on this Mac: a process started from a non-interactive shell can be moved to the
   macOS background band and slow down 10x; `taskpolicy -B -p <pid>` lifts it.
