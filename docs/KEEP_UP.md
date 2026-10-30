@@ -1,13 +1,13 @@
 # Keep up: project status for the Android side
 
-Last updated: **2026-10-23**. Add a dated entry to the [log](#log) whenever something
+Last updated: **2026-10-30**. Add a dated entry to the [log](#log) whenever something
 lands or a decision changes, and keep the sections above it current.
 
 ## 1. In one paragraph
 
 An offline phone app that tells you **which sorghum cultivar** a sample is, from photos of
 a leaf, panicle or grain on a plain board. First it checks the sample **is sorghum** with a
-small on-device image model (MobileNetV3-Small). Then it reads visible traits (colours,
+small on-device image model (MobileNetV2, ADR-0010). Then it reads visible traits (colours,
 shapes, seed size) as probabilities and runs a naive Bayes model over genebank tables. It
 returns the best matches with reasons, or "unrecognized". It runs on Android and iPhone.
 All logic lives once, in Kotlin Multiplatform (`shared/`), and the native apps are thin
@@ -22,7 +22,7 @@ shells. The whole design is in [ARCHITECTURE.md](architecture/ARCHITECTURE.md).
 | Capture state machine moved from `CaptureViewModel` to `shared/session/CaptureFlow` | Done (step 2) | `main` (PR #3, merged) |
 | iOS app uses `Shared.framework` instead of Swift copies; Swift ports deleted | Done (step 3). Still open: R3 benchmark on a real iPhone (live green check under 5 ms/frame) and a real-device check | `main` (PR #3, merged) |
 | `shared/species` (`ImageModel` port, `ModelMetadata`, `SpeciesGate`) + LiteRT runner on iPhone + photo-library analysis | Done; bad output or a missing model gives "species not checked" (PR #18); waits for a trained model file | `main` (PR #4, PR #18) |
-| Species model ("is it sorghum?"): data sources, training, INT8 export | Pipeline merged (PR #11). Iteration 1 trained but **below the bar** (sorghum vs not-sorghum 0.671, bar 0.90; INT8 loses 14 points, bar 2), so it is not in the app. Iteration 2 (minimalistic MobileNetV3) paused | `main`; iteration 2 on `feature/species-model-v2` |
+| Species model ("is it sorghum?"): data sources, training, INT8 export | Pipeline merged (PR #11). Still **below the bar** (0.90 sorghum vs not-sorghum, INT8 within 2 points), so no model is in the app. Backbone now MobileNetV2, exported with TF 2.17 (ADR-0010). v2-2: 0.857 on test, INT8 3.2 points under float; its test split was defective. v2-3 trains on the fixed split | `feature/species-model-v2` |
 | Bundling `traits-vN` into iOS + model parity XCTest | Done; waits for a model that passes the bar | `main` (PR #12, merged) |
 | **Android species gate: LiteRT runner, asset loader, UI states** | **Paused** (2026-10-23: iPhone first). Work in progress kept on the branch, no PR | `feature/android-litert` |
 | Trait catalogue + `TraitEstimate` with noise floor (`shared/traits`) | Done | `main` (PR #7) |
@@ -150,6 +150,16 @@ Details in `model/README.md`.
 ## Log
 
 Newest first. One line per change that someone on Android should know about.
+
+- **2026-10-30:** Species model iterations 2-3 (`feature/species-model-v2`, ADR-0010). The
+  Keras MobileNetV3-Small weights lose ~10 points to INT8 even before fine-tuning, so the
+  backbone is now MobileNetV2 1.0 (2.7 MB INT8), converted with TF 2.17 to match
+  TensorFlowLiteSwift 2.17.0. Results on test, INT8: v2-1 (MobileNetV3 minimalistic) 0.765
+  sorghum vs not, v2-2 (MobileNetV2) 0.857; bar 0.90. v2-2's split was defective (1,499
+  Sorghum Disease photos chained into one near-duplicate group, all in test); that dataset
+  is now exempt and v2-3 retrains on the fixed split. The threshold is now the most
+  accurate one on validation with >= 95% sorghum precision (ASSUMPTION, confirm).
+  `traits-vN.json` gains only additive keys. Nothing for Android to change.
 
 - **2026-10-23:** PR #18 merged: the species check reports bad model output as
   `Unavailable(reason)` instead of crashing, and an invalid model loads as "no model". Only

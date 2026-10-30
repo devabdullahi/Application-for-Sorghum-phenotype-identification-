@@ -17,15 +17,26 @@ It produces:
 Nothing here ships in the app, and the app never uses the network. Only this workstation
 tool downloads photos.
 
-## Status (2026-10-23)
+## Status (2026-10-30)
 
 - Done: class definitions, downloaders for iNaturalist, GBIF, Wikimedia Commons and Flickr,
   importers for the Mendeley Data and Figshare (GrainSet) datasets, folder importer, grouped
-  splits, calibration maths, metadata format, training and INT8 export code, unit tests.
-- Verified: unit tests pass; every source except Flickr (no key yet) was smoke-tested against
-  its live API on 2026-10-23.
-- **Not yet run:** `train` and `export` on real data. Expect small fixes on the first run.
+  splits, calibration maths, metadata format, training (resumable) and INT8 export code,
+  unit tests. Manifests and the split are committed.
+- Runs so far, all below the ship bar (test split, INT8, TF 2.17 converter unless noted):
+
+  | Run | Backbone | Sorghum-vs-not | Float / INT8 9-class |
+  |---|---|---|---|
+  | diag-1 | MobileNetV3-Small (TF 2.20) | 0.671 | 0.867 / 0.727 |
+  | v2-1 | MobileNetV3-Small minimalistic | 0.765 | 0.780 / 0.693 |
+  | v2-2 | MobileNetV2 1.0 | 0.857 (validation 0.936) | 0.842 / 0.810 |
+
+  v2-1 and v2-2 were scored with today's threshold rule. v2-2 was evaluated on a
+  **defective split**: 1,499 Sorghum Disease photos chained into one near-duplicate group,
+  all in test (see `SplitSettings`). v2-3 retrains on the corrected split.
 - **Short classes:** finger millet and `no_plant` (see [Data reality](#data-reality)).
+- Long jobs on this Mac: a process started from a non-interactive shell can be moved to the
+  macOS background band and slow down 10x; `taskpolicy -B -p <pid>` lifts it.
 
 ## Decisions behind this code
 
