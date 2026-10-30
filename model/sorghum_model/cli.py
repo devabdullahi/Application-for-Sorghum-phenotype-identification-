@@ -28,6 +28,7 @@ from sorghum_model.manifest import (
 from sorghum_model.settings import (
     DownloadSettings,
     ExportSettings,
+    GrinDescriptorSettings,
     LabelReviewSettings,
     PublicDatasetSettings,
     SplitSettings,
@@ -46,6 +47,17 @@ DEFAULT_DATA_ROOT = MODEL_DIR / "data"
 DEFAULT_MANIFEST_DIR = MODEL_DIR / "manifests"
 DEFAULT_INAT_MANIFEST = DEFAULT_MANIFEST_DIR / "species-inaturalist.csv"
 DEFAULT_SPLIT_MANIFEST = MODEL_DIR / "splits" / "species-v1.csv"
+DEFAULT_CULTIVAR_DATA_ROOT = DEFAULT_DATA_ROOT / "cultivar"
+DEFAULT_GRIN_MANIFEST = DEFAULT_MANIFEST_DIR / "cultivar-grin.csv"
+DEFAULT_GRIN_DESCRIPTORS = DEFAULT_MANIFEST_DIR / "cultivar-grin-descriptors.csv"
+# GRIN pages saved by grin-descriptors; cultivar-split reads the image study pages from here.
+DEFAULT_GRIN_PAGE_CACHE = DEFAULT_CULTIVAR_DATA_ROOT / "grin-descriptor-pages"
+DEFAULT_CULTIVAR_SPLIT = MODEL_DIR / "splits" / "cultivar-grin-v1.csv"
+# Names the cultivar split scheme; see SplitSettings.salt.
+CULTIVAR_SPLIT_SALT = "cultivar-grin-v1"
+# Same cadence as the species downloaders: losing at most this many rows on a crash is cheap,
+# because the files stay on disk and the next run re-adds their rows without fetching them.
+GRIN_MANIFEST_SAVE_EVERY = 200
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -58,6 +70,9 @@ def main(argv: list[str] | None = None) -> int:
     _add_mendeley_import(commands)
     _add_figshare_import(commands)
     _add_import_folder(commands)
+    _add_grin_download(commands)
+    _add_cultivar_split(commands)
+    _add_grin_descriptors(commands)
     _add_review_labels(commands)
     _add_split(commands)
     _add_train(commands)
@@ -536,6 +551,142 @@ def _run_review_labels(arguments) -> None:
             if in_class:
                 verified = sum(r.label_status is LabelStatus.VERIFIED for r in in_class)
                 print(f"{manifest.name} {class_name:15} {verified}/{len(in_class)} verified")
+
+
+def _add_grin_download(commands) -> None:
+    command = commands.add_parser(
+        "grin-download", help="Download GRIN-Global's accession-labelled sorghum seed/panicle images."
+    )
+    command.add_argument("--data-root", type=Path, default=DEFAULT_CULTIVAR_DATA_ROOT)
+    command.add_argument("--manifest", type=Path, default=DEFAULT_GRIN_MANIFEST)
+    command.set_defaults(run=_run_grin_download)
+
+
+def _run_grin_download(arguments) -> None:
+    from sorghum_model import grin
+    from sorghum_model.cultivar_manifest import write_cultivar_manifest
+
+    def report_failure(image, error: Exception) -> None:
+        print(f"  failed: {image.accession_number} {image.image_path}: {error}", file=sys.stderr)
+
+    records = []
+    with manifest_lock(arguments.manifest):
+        for study in grin.SORGHUM_IMAGE_STUDIES:
+            in_study = 0
+            for record in grin.download_study(study, arguments.data_root, report_failure):
+                records.append(record)
+                in_study += 1
+                # Saved regularly, so an interrupted run keeps the rows of what it has.
+                if len(records) % GRIN_MANIFEST_SAVE_EVERY == 0:
+                    write_cultivar_manifest(records, arguments.manifest)
+            write_cultivar_manifest(records, arguments.manifest)
+            print(f"{study.name}: {in_study} images", flush=True)
+    print(f"grin: {len(records)} images of {len({r.cultivar_label for r in records})} accessions")
+
+
+def _add_grin_descriptors(commands) -> None:
+    command = commands.add_parser(
+        "grin-descriptors",
+        help="Fetch GRIN race and trait observations for the accessions in the GRIN image studies.",
+    )
+    command.add_argument("--out", type=Path, default=DEFAULT_GRIN_DESCRIPTORS)
+    command.add_argument(
+        "--page-cache",
+        type=Path,
+        default=DEFAULT_GRIN_PAGE_CACHE,
+        help="Fetched GRIN pages are kept here, so a rerun skips them.",
+    )
+    command.add_argument(
+        "--image-manifest",
+        type=Path,
+        default=DEFAULT_GRIN_MANIFEST,
+        help="Coverage is reported for the accessions whose images are in this manifest.",
+    )
+    command.set_defaults(run=_run_grin_descriptors)
+
+
+def _run_grin_descriptors(arguments) -> None:
+    from sorghum_model import grin, grin_descriptors
+    from sorghum_model.cultivar_manifest import read_cultivar_manifest
+    from sorghum_model.downloads import RequestPacer, get_text
+
+    settings = GrinDescriptorSettings()
+    fetch_page = grin_descriptors.CachedPageFetcher(
+        arguments.page_cache,
+        lambda url: get_text(url, timeout_seconds=settings.study_page_timeout_seconds),
+        RequestPacer(settings.seconds_between_requests),
+    )
+    # Every photographed accession, not only those downloaded so far, so the file is complete
+    # once the image download finishes.
+    accessions: set[str] = set()
+    for study in grin.SORGHUM_IMAGE_STUDIES:
+        accessions.update(image.accession_number for image in grin.parse_study_page(fetch_page(study.page_url)))
+    print(f"{len(accessions)} photographed accessions", flush=True)
+
+    observations = list(grin_descriptors.fetch_observations(accessions, fetch_page))
+    observations += grin_descriptors.combine_panicle_observations(observations)
+    grin_descriptors.write_observations(observations, arguments.out)
+    print(f"{len(observations)} observations written to {arguments.out}")
+
+    downloaded = {record.cultivar_label for record in read_cultivar_manifest(arguments.image_manifest)}
+    for line in grin_descriptors.coverage_report(observations, accessions, downloaded):
+        print(line)
+
+
+def _add_cultivar_split(commands) -> None:
+    command = commands.add_parser(
+        "cultivar-split",
+        help="Split a cultivar manifest by accession and by planting, with race labels and a summary.",
+    )
+    command.add_argument("--manifest", type=Path, default=DEFAULT_GRIN_MANIFEST)
+    command.add_argument("--descriptors", type=Path, default=DEFAULT_GRIN_DESCRIPTORS)
+    command.add_argument(
+        "--page-cache",
+        type=Path,
+        default=DEFAULT_GRIN_PAGE_CACHE,
+        help="Cached GRIN study pages (from grin-descriptors), to count the images GRIN lists.",
+    )
+    command.add_argument("--out", type=Path, default=DEFAULT_CULTIVAR_SPLIT)
+    command.set_defaults(run=_run_cultivar_split)
+
+
+def _run_cultivar_split(arguments) -> None:
+    from sorghum_model import grin
+    from sorghum_model.cultivar_manifest import (
+        drop_repeated_rows,
+        find_accession_split_leaks,
+        read_cultivar_manifest,
+        read_cultivar_split,
+        write_cultivar_split,
+    )
+    from sorghum_model.cultivar_races import race_labels
+    from sorghum_model.cultivar_reconciliation import ListedImage, reconciliation_report
+    from sorghum_model.grin_descriptors import cache_file_name, read_observations
+
+    settings = SplitSettings(salt=CULTIVAR_SPLIT_SALT)
+    records, repeated_rows_dropped = drop_repeated_rows(read_cultivar_manifest(arguments.manifest))
+    observations = read_observations(arguments.descriptors)
+    races = race_labels({record.cultivar_label for record in records}, observations)
+    write_cultivar_split(
+        records, races, arguments.out, settings.validation_fraction, settings.test_fraction, settings.salt
+    )
+    rows = read_cultivar_split(arguments.out)
+    leaks = find_accession_split_leaks(rows)
+    if leaks:
+        raise SystemExit("accession split leaks:\n" + "\n".join(leaks))
+
+    listed_images = []
+    for study in grin.SORGHUM_IMAGE_STUDIES:
+        page = arguments.page_cache / cache_file_name(study.page_url)
+        listed_images += [
+            ListedImage(f"{study.name}/{image.accession_id}", image.accession_number)
+            for image in grin.parse_study_page(page.read_text(encoding="utf-8"))
+        ]
+    lines = reconciliation_report(rows, listed_images, observations, races, repeated_rows_dropped)
+    summary = arguments.out.with_name(f"{arguments.out.stem}-summary.txt")
+    summary.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print("\n".join(lines))
+    print(f"{len(rows)} rows written to {arguments.out}; summary in {summary}")
 
 
 def _add_split(commands) -> None:

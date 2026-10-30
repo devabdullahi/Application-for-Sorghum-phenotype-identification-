@@ -281,3 +281,54 @@ class DownloadSettings:
     def __post_init__(self) -> None:
         if self.checkpoint_every_photos < 1:
             raise ValueError("checkpoint_every_photos must be at least 1")
+
+
+@dataclass(frozen=True)
+class GrinDescriptorSettings:
+    """How `grin-descriptors` talks to GRIN-Global while `grin-download` uses the same server.
+
+    Attributes:
+        seconds_between_requests: this command's own pace. Six times slower than the shared
+            one-per-second pace, so the image download running at the same time is not slowed.
+        study_page_timeout_seconds: socket read timeout for descriptor and study pages. GRIN
+            builds each page in full before sending it; the 60 s default timed out on
+            2026-10-30, and SEEDWEIGHT's single study lists about 37,000 accessions in one
+            page. Ten minutes is an initial guess with room for that page.
+    """
+
+    seconds_between_requests: float = 6.0
+    study_page_timeout_seconds: float = 600.0
+
+    def __post_init__(self) -> None:
+        if self.seconds_between_requests < 1:
+            raise ValueError("seconds_between_requests must be at least 1 (GRIN asks for polite clients)")
+        if not 60 <= self.study_page_timeout_seconds <= 3600:
+            raise ValueError("study_page_timeout_seconds must be in [60, 3600]")
+
+
+@dataclass(frozen=True)
+class RaceEvaluationSettings:
+    """When the race model returns a group of races, and when it answers "unrecognized".
+
+    The model's calibrated race probabilities are sorted; the returned group is the fewest
+    top races whose probabilities add up to `group_probability_mass`. A group larger than
+    `max_group_size` says too little, so the answer is "unrecognized" (an abstention, ADR-0011).
+    Both values are tuned on the validation split only, never on test.
+
+    Attributes:
+        group_probability_mass: 0.9 is an initial guess: the true race should be in the group
+            about nine times in ten when the probabilities are calibrated, matching the 89%
+            target. Tune on validation.
+        max_group_size: 3 is an initial guess: a basic race and its two closest intermediates
+            (e.g. Durra, Durra-bicolor, Durra-caudatum) is still a useful answer; more is not.
+            Tune on validation, reading accuracy against coverage.
+    """
+
+    group_probability_mass: float = 0.9
+    max_group_size: int = 3
+
+    def __post_init__(self) -> None:
+        if not 0.5 <= self.group_probability_mass < 1:
+            raise ValueError("group_probability_mass must be in [0.5, 1)")
+        if not 1 <= self.max_group_size <= 15:
+            raise ValueError("max_group_size must be in [1, 15] (there are fifteen races)")

@@ -158,10 +158,18 @@ Newest first. One line per change that someone on Android should know about.
   sorghum vs not, v2-2 (MobileNetV2) 0.857; bar 0.90. v2-2's split was defective (1,499
   Sorghum Disease photos chained into one near-duplicate group, all in test); that dataset
   is now exempt. **v2-3 on the fixed split meets the bar: 0.932 on test, INT8 within 1.2
-  points of float; exported as `traits-v2`** (iOS parity test before bundling). The threshold is now the most
-  accurate one on validation with >= 95% sorghum precision (ASSUMPTION, confirm).
+  points of float; exported as `traits-v2`** (iOS parity test before bundling). The
+  threshold is now the most accurate one on validation with >= 95% sorghum precision
+  (ASSUMPTION, confirm).
   `traits-vN.json` gains only additive keys. Nothing for Android to change.
-
+- **2026-10-30:** Branch and worktree cleanup (#27). Deleted 20 branches, local and remote,
+  whose work is on `main` through merged PRs #3-#20 (closed #1 and #2 were superseded by #11
+  and #6), plus the local `test/ios-diag-parity`. Pruned 9 worktrees whose folders were gone
+  and removed 10 clean worktrees of merged branches. Kept: `feature/species-model-v2` and
+  `feature/cultivar-data` (active runs); `feature/android-litert` (paused, unmerged LiteRT
+  work); `backup/android-litert-pre-rebase`; and the worktrees of `feature/species-model`
+  and `fix/species-invalid-output`, which hold uncommitted changes. The list with a
+  recommendation for each is on #27.
 - **2026-10-23:** PR #18 merged: the species check reports bad model output as
   `Unavailable(reason)` instead of crashing, and an invalid model loads as "no model". Only
   sorghum and unchecked photos go on to matching; unsure means retake. iOS shows "Species

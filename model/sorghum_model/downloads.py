@@ -104,6 +104,22 @@ def get_json(url: str, params: dict | None = None) -> dict:
     return _with_retries(fetch)
 
 
+def get_text(url: str, timeout_seconds: float = REQUEST_TIMEOUT_SECONDS) -> str:
+    """GETs a text page (HTML), waiting for the shared pacer first and retrying transient errors.
+
+    For sources with no JSON API (GRIN-Global's study pages). Decoded as UTF-8; undecodable
+    bytes are replaced, because only the markup around the labels is parsed. Pass a longer
+    `timeout_seconds` for pages the server takes minutes to build.
+    """
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+
+    def fetch() -> str:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            return response.read().decode("utf-8", errors="replace")
+
+    return _with_retries(fetch)
+
+
 def download_file(
     url: str,
     destination: Path,
