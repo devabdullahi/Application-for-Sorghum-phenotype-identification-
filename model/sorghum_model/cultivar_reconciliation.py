@@ -52,6 +52,10 @@ def _image_lines(rows: list[dict[str, str]], listed: list[ListedImage], repeated
     not_downloaded = sorted(listed_ids - downloaded_ids)
     not_listed = sorted(downloaded_ids - listed_ids)
     plantings = {source_id.split("/")[0] for source_id in listed_ids}
+    # One file in several rows is one photo counted twice; before the NOTE links were read,
+    # every accession photographed in two plantings had the same file in both.
+    rows_of_file = Counter(row["sha256"] for row in rows)
+    shared_files = [sha256 for sha256, count in rows_of_file.items() if count > 1]
     return [
         "Images",
         f"  listed on the GRIN study pages: {len(listed_ids)} images of "
@@ -60,6 +64,8 @@ def _image_lines(rows: list[dict[str, str]], listed: list[ListedImage], repeated
         f"  downloaded: {len(rows)} images of {len({row['cultivar_label'] for row in rows})} accessions",
         f"  listed but not downloaded: {len(not_downloaded)} {_examples(not_downloaded)}",
         f"  downloaded but not listed: {len(not_listed)} {_examples(not_listed)}",
+        f"  image files in more than one row: {len(shared_files)} "
+        f"({sum(rows_of_file[sha256] for sha256 in shared_files)} rows)",
         "",
     ]
 

@@ -564,21 +564,43 @@ def _add_grin_download(commands) -> None:
     )
     command.add_argument("--data-root", type=Path, default=DEFAULT_CULTIVAR_DATA_ROOT)
     command.add_argument("--manifest", type=Path, default=DEFAULT_GRIN_MANIFEST)
+    command.add_argument(
+        "--page-cache",
+        type=Path,
+        default=DEFAULT_GRIN_PAGE_CACHE,
+        help="Study pages are read from here (shared with grin-descriptors) and fetched only when missing.",
+    )
     command.set_defaults(run=_run_grin_download)
 
 
 def _run_grin_download(arguments) -> None:
-    from sorghum_model import grin
-    from sorghum_model.cultivar_manifest import write_cultivar_manifest
+    from sorghum_model import grin, grin_descriptors
+    from sorghum_model.cultivar_manifest import read_cultivar_manifest, write_cultivar_manifest
+    from sorghum_model.downloads import RequestPacer, get_text
 
     def report_failure(image, error: Exception) -> None:
         print(f"  failed: {image.accession_number} {image.image_path}: {error}", file=sys.stderr)
 
+    settings = GrinDescriptorSettings()
+    fetch_page = grin_descriptors.CachedPageFetcher(
+        arguments.page_cache,
+        lambda url: get_text(url, timeout_seconds=settings.study_page_timeout_seconds),
+        RequestPacer(settings.seconds_between_requests),
+    )
     records = []
     with manifest_lock(arguments.manifest):
+        # The last run's files are kept only where they came from the URL this run wants.
+        previous_source_urls = {}
+        if arguments.manifest.exists():
+            previous_source_urls = {
+                record.image_path: record.source_url for record in read_cultivar_manifest(arguments.manifest)
+            }
         for study in grin.SORGHUM_IMAGE_STUDIES:
             in_study = 0
-            for record in grin.download_study(study, arguments.data_root, report_failure):
+            page_html = fetch_page(study.page_url)
+            for record in grin.download_study(
+                study, page_html, arguments.data_root, report_failure, previous_source_urls
+            ):
                 records.append(record)
                 in_study += 1
                 # Saved regularly, so an interrupted run keeps the rows of what it has.
@@ -684,7 +706,7 @@ def _run_cultivar_split(arguments) -> None:
     for study in grin.SORGHUM_IMAGE_STUDIES:
         page = arguments.page_cache / cache_file_name(study.page_url)
         listed_images += [
-            ListedImage(f"{study.name}/{image.accession_id}", image.accession_number)
+            ListedImage(f"{study.name}/{image.photo_id}", image.accession_number)
             for image in grin.parse_study_page(page.read_text(encoding="utf-8"))
         ]
     lines = reconciliation_report(rows, listed_images, observations, races, repeated_rows_dropped)

@@ -180,7 +180,7 @@ is an accession number, not a species class. Survey of sources, metric and plan:
 [ADR-0011](../docs/architecture/adr/0011-cultivar-accuracy-target.md) (draft).
 
 - `grin-download`: GRIN-Global's sorghum seed/panicle photos (USDA-ARS, public domain;
-  9,394 images, 8,965 accessions, 11 plantings; 9,393 downloaded, one is a 404). Rows go to
+  9,410 images, 8,965 accessions, 11 plantings; all downloaded on 2026-10-30). Rows go to
   `manifests/cultivar-grin.csv`. GRIN's server answers slowly (about 6 s per image), so a
   full run takes most of a day; it is resumable.
 - `grin-descriptors`: GRIN's race and trait observations for every photographed accession,
@@ -216,16 +216,22 @@ model:
 | `unmapped-value` | anything else | a value GRIN added later; map it before scoring |
 | `conflicting-observations` | e.g. Durra + Durra-bicolor | plantings disagree; choosing one would be a guess |
 
-Final counts (2026-10-30, `splits/cultivar-grin-v1-summary.txt`): 6,462 accessions / 6,715
-images scored; excluded 2,204 no-race-observation, 6 race-unknown, 197 not-a-race (Mixed
+Final counts (2026-10-30, after #36, `splits/cultivar-grin-v1-summary.txt`): 6,463 accessions
+/ 6,721 images scored; excluded 2,204 no-race-observation, 6 race-unknown, 197 not-a-race (Mixed
 182, Shattercane 13, Breeding line 2), 95 conflicting-observations, 0 unmapped-value.
 
 Trait-mapping assumptions still to confirm (`grin_descriptors.py`): Straw glume -> IBPGR
 White, Colourless midrib -> White, Lax panicle -> 1 "Very lax".
 
-Known gap: GRIN lists an accession with several images as one row per image, but each row's
-image cell shows the first image, so only the first image of those accessions is downloaded
-(the repeats are dropped). Fetching the others needs the NOTE column's paths.
+Which image a study-page row names (#36, 2026-10-30): a row's IMAGE cell shows the
+accession's first image in GRIN, which can belong to another planting, and repeats it on the
+"Second/Third/Fourth image" rows. The NOTE column links the row's own image on the old NPGS
+server; `grin.parse_study_page` maps that link to the same file on the GRIN-Global server and
+uses it. Before this, all 426 accessions photographed in two or more plantings had **the same
+file** in each planting, so `planting_split` test photos were copies of training photos, and
+the extra images of 13 accessions were never fetched. A rerun of `grin-download` re-fetches a
+file only when the old manifest says it came from another URL, and reads the study pages from
+the `grin-descriptors` page cache.
 
 ### Race model plan (T4, #24)
 
