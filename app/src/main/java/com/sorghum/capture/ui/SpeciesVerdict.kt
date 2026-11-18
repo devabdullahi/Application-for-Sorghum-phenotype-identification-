@@ -39,7 +39,8 @@ internal fun speciesVerdict(species: SpeciesCheck): SpeciesVerdict = when (speci
         detail = stringResource(R.string.species_unsure_detail),
         color = VERDICT_UNSURE_COLOR,
     )
-    SpeciesCheck.Unavailable -> SpeciesVerdict(
+    // No model, or the model's output did not fit its metadata: either way the photo was not checked.
+    is SpeciesCheck.Unavailable -> SpeciesVerdict(
         title = stringResource(R.string.photo_accepted),
         detail = stringResource(R.string.species_unavailable_detail),
         color = Color.Unspecified,

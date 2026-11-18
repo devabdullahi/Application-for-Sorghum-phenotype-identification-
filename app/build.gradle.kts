@@ -36,6 +36,12 @@ android {
         // The species model is memory-mapped straight from the APK, which needs it stored uncompressed.
         noCompress += "tflite"
     }
+    sourceSets {
+        // One copy of the model for both apps: the iOS project's model folder, which ios/project.yml
+        // declares the only place for versioned model files. Bundled at build time; the APK
+        // carries its own copy, nothing is read from this folder on the phone.
+        getByName("main").assets.srcDir("../ios/SorghumCapture/Resources/Models")
+    }
     kotlinOptions {
         jvmTarget = "11"
     }

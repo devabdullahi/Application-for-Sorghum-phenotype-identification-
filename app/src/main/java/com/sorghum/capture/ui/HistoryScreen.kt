@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -34,17 +33,20 @@ import com.sorghum.capture.R
 import com.sorghum.species.SpeciesCheck
 import java.util.Date
 
-/** The History tab: a summary of this session's results, then each accepted photo, newest first. */
+/**
+ * Recent results, shown in a bottom sheet: a summary of this session's results, then each
+ * accepted photo, newest first. The sheet handles the system bar insets.
+ */
 @Composable
 fun HistoryScreen(entries: List<HistoryEntry>) {
-    Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+    Column(Modifier.fillMaxWidth()) {
         Text(
-            text = stringResource(R.string.tab_history),
+            text = stringResource(R.string.recent_results_title),
             style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
         if (entries.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp), contentAlignment = Alignment.Center) {
                 Text(stringResource(R.string.history_empty), textAlign = TextAlign.Center)
             }
             return@Column
@@ -102,7 +104,7 @@ private fun historySummary(entries: List<HistoryEntry>): String {
     val sorghumCount = entries.count { it.species is SpeciesCheck.Sorghum }
     val notSorghumCount = entries.count { it.species is SpeciesCheck.NotSorghum }
     val retakeCount = entries.count { it.species is SpeciesCheck.Unsure || it.species == SpeciesCheck.NoPlant }
-    val notCheckedCount = entries.count { it.species == SpeciesCheck.Unavailable }
+    val notCheckedCount = entries.count { it.species is SpeciesCheck.Unavailable }
 
     val parts = buildList {
         add(pluralStringResource(R.plurals.history_photo_count, entries.size, entries.size))

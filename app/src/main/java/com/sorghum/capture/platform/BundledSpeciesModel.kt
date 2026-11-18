@@ -9,8 +9,9 @@ import java.io.Closeable
 import java.io.IOException
 
 /**
- * The species model bundled in the APK: `traits-vN.tflite` and `traits-vN.json` in
- * `app/src/main/assets/`, copied from the `model/` export. The highest N found is used.
+ * The species model bundled in the APK: `traits-vN.tflite` and `traits-vN.json`, taken at build
+ * time from `ios/SorghumCapture/Resources/Models/` so both apps ship the same files (see
+ * `app/build.gradle.kts`). The highest N found is used.
  * Android counterpart of `ios/SorghumCapture/Model/BundledSpeciesModel.swift`.
  *
  * Owns the native interpreter behind [gate]; [close] it when the screen that uses it goes away.

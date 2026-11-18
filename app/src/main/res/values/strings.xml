@@ -2,16 +2,24 @@
 <resources>
     <string name="app_name">Sorghum Capture</string>
 
-    <!-- Tabs. -->
-    <string name="tab_history">History</string>
-    <string name="tab_capture">Capture</string>
-    <string name="tab_settings">Settings</string>
+    <!-- Corner buttons over the camera; read by screen readers. -->
+    <string name="recent_results_button">Recent results</string>
+    <string name="flash_turn_on">Turn flash on</string>
+    <string name="flash_turn_off">Turn flash off</string>
+    <string name="flash_unavailable">Flash not available on this phone</string>
+    <string name="upload_button">Upload a photo from the gallery</string>
+    <string name="settings_button">Settings</string>
+    <string name="shutter_button">Take photo</string>
 
-    <!-- Capture tab. -->
-    <string name="capture_instruction">Fit the whole panicle in the rectangle.</string>
+    <!-- Camera. -->
+    <!-- Photos are cropped to a centred frame that is not drawn, hence "in the centre". -->
+    <string name="capture_instruction">Centre the whole panicle, with space around it.</string>
+    <!-- %1$s is the zoom ratio with one decimal, e.g. "1.5". -->
+    <string name="zoom_ratio">%1$s×</string>
 
-    <!-- History tab. Photos are kept for this session only. -->
-    <string name="history_empty">No photos yet. Photos you take this session appear here.</string>
+    <!-- Recent results. Photos are kept for this session only. -->
+    <string name="recent_results_title">Recent results</string>
+    <string name="history_empty">No results yet. Photos you take or upload this session appear here.</string>
     <plurals name="history_photo_count">
         <item quantity="one">%1$d photo</item>
         <item quantity="other">%1$d photos</item>
@@ -20,6 +28,17 @@
     <string name="history_not_sorghum_count">%1$d not sorghum</string>
     <string name="history_retake_count">%1$d to retake</string>
     <string name="history_not_checked_count">%1$d not checked for species</string>
+
+    <!-- Settings. They last for this session; nothing is stored on the device. -->
+    <string name="settings_title">Settings</string>
+    <string name="setting_grid">Grid</string>
+    <string name="setting_grid_detail">Show lines that split the view into thirds.</string>
+    <string name="setting_auto_capture">Auto-capture</string>
+    <string name="setting_auto_capture_detail">Take the photo when the phone is level and held steady over the sample.</string>
+    <string name="setting_species_check">Species check</string>
+    <string name="setting_species_check_installed">Installed. Photos are checked for sorghum.</string>
+    <string name="setting_species_check_missing">Not installed. Photos are only checked for quality.</string>
+    <string name="clear_recent_results">Clear recent results</string>
 
     <!-- Post-capture check. -->
     <string name="photo_accepted">Photo accepted</string>
@@ -31,7 +50,7 @@
     <string name="try_again">Try again</string>
 
     <!-- Species check (ADR-0006), shown with the accepted photo. Same wording as iOS. -->
-    <string name="species_unavailable_detail">Species check not installed yet: this photo was only checked for quality.</string>
+    <string name="species_unavailable_detail">Species not checked: this photo was only checked for quality.</string>
     <string name="species_sorghum_title">Sorghum</string>
     <!-- %1$s is a whole percentage, e.g. "93%". -->
     <string name="species_sorghum_detail">Photo accepted. Sorghum, %1$s sure.</string>

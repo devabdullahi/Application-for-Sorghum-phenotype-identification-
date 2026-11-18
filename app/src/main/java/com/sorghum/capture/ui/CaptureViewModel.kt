@@ -2,9 +2,9 @@ package com.sorghum.capture.ui
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.net.Uri
 import android.util.Log
 import androidx.camera.core.ImageCaptureException
-import androidx.camera.core.ImageProxy
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sorghum.capture.camera.CameraSession
@@ -14,6 +14,8 @@ import com.sorghum.capture.camera.toPixelImage
 import com.sorghum.capture.guidance.DeviceTilt
 import com.sorghum.capture.guidance.GuidanceState
 import com.sorghum.capture.platform.BundledSpeciesModel
+import com.sorghum.capture.platform.decodeLibraryPhoto
+import com.sorghum.capture.quality.PhotoSource
 import com.sorghum.capture.quality.QUALITY_CHECK_LONG_SIDE_PIXELS
 import com.sorghum.capture.quality.RejectionReason
 import com.sorghum.segmentation.SampleCoverage
@@ -44,10 +46,10 @@ sealed interface CaptureUiState {
 }
 
 /**
- * One accepted photo from this session, for the History tab.
+ * One accepted photo from this session, for the recent results list.
  *
- * @param photo a downscaled copy of the framed photo, small enough to keep many in memory.
- * @param capturedAtEpochMillis wall-clock time the photo was taken, for display only.
+ * @param photo a downscaled copy of the framed or picked photo, small enough to keep many in memory.
+ * @param capturedAtEpochMillis wall-clock time the photo was taken or picked, for display only.
  */
 data class HistoryEntry(val photo: Bitmap, val species: SpeciesCheck, val capturedAtEpochMillis: Long)
 
@@ -68,6 +70,9 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
 
     val targetFrame = flow.settings.targetFrame
     val greenDetectionSettings = flow.settings.greenDetection
+
+    /** False when no species model is installed, which Settings must announce. */
+    val isSpeciesCheckAvailable: Boolean get() = flow.isSpeciesCheckAvailable
 
     /** The accepted photo, kept here because the shared flow never holds platform images. */
     private var acceptedPhoto: Bitmap? = null
@@ -106,8 +111,8 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Takes a photo and checks it. Ignored unless live guidance is showing, which prevents a
-     * second capture while the first is still being checked.
+     * Takes a photo and checks it, from auto-capture or the shutter button. Ignored unless live
+     * guidance is showing, which prevents a second capture while the first is still being checked.
      */
     fun captureAndCheckPhoto(camera: CameraSession) {
         if (!flow.startCapture()) return
@@ -124,16 +129,45 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
             }
             val capturedAtEpochMillis = System.currentTimeMillis()
             // Cropping and checking a full-resolution photo takes a moment; keep it off the UI thread.
-            val check = withContext(Dispatchers.Default) { photo.use { checkPhoto(it) } }
-            if (check.rejection == null) {
-                acceptedPhoto = check.framedPhoto
-                addToHistory(HistoryEntry(checkNotNull(check.historyPhoto), check.species, capturedAtEpochMillis))
-            } else {
-                check.framedPhoto.recycle()
+            val check = withContext(Dispatchers.Default) {
+                photo.use {
+                    val framedPhoto = cropToTargetFrame(it, targetFrame, maxLongSidePixels = Int.MAX_VALUE)
+                    checkPhoto(framedPhoto, PhotoSource.CAMERA_TARGET_FRAME)
+                }
             }
-            flow.onPhotoChecked(check.rejection, check.species)
-            publishState()
+            recordPhotoCheck(check, capturedAtEpochMillis)
         }
+    }
+
+    /**
+     * Checks a photo picked from the photo library with the same shared checks as a camera
+     * photo. The whole photo is used, since it has no target frame. Works without a camera or
+     * level sensor (the shared flow decides); ignored while a photo is already being checked.
+     * Same behaviour as `analyzeLibraryPhoto` on iOS.
+     */
+    fun analyzeLibraryPhoto(photoUri: Uri) {
+        if (!flow.startLibraryCheck()) return
+        publishState()
+
+        val contentResolver = getApplication<Application>().contentResolver
+        viewModelScope.launch {
+            val pickedAtEpochMillis = System.currentTimeMillis()
+            val photo = withContext(Dispatchers.IO) {
+                decodeLibraryPhoto(contentResolver, photoUri, LIBRARY_PHOTO_LONG_SIDE_PIXELS)
+            }
+            if (photo == null) {
+                flow.onCaptureFailed()
+                publishState()
+                return@launch
+            }
+            val check = withContext(Dispatchers.Default) { checkPhoto(photo, PhotoSource.PHOTO_LIBRARY) }
+            recordPhotoCheck(check, pickedAtEpochMillis)
+        }
+    }
+
+    /** Empties the recent results list. The photo on screen, if any, is not affected. */
+    fun clearHistory() {
+        mutableHistory.value = emptyList()
     }
 
     /** Returns to live guidance, starting the steady hold from scratch. */
@@ -165,38 +199,53 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Crops the photo to the target frame and runs the shared checks on it: quality first,
-     * then, for an accepted photo, species. Same order and same analysis copy as iOS.
+     * Runs the shared checks on an upright photo (cropped to the target frame for a camera
+     * photo, whole for a library photo): quality first, then, for an accepted photo, species.
+     * Same order and same analysis copy as iOS.
      */
-    private fun checkPhoto(image: ImageProxy): PhotoCheck {
-        val framedPhoto = cropToTargetFrame(image, targetFrame, maxLongSidePixels = Int.MAX_VALUE)
-
+    private fun checkPhoto(photo: Bitmap, source: PhotoSource): PhotoCheck {
         // Quality thresholds are defined for a fixed analysis size (see QualitySettings). The
         // species gate makes its own model input from this same copy.
-        val analysisCopy = framedPhoto.scaledToLongSide(QUALITY_CHECK_LONG_SIDE_PIXELS)
+        val analysisCopy = photo.scaledToLongSide(QUALITY_CHECK_LONG_SIDE_PIXELS)
         val analysisImage = analysisCopy.toPixelImage()
-        if (analysisCopy !== framedPhoto) analysisCopy.recycle()
+        if (analysisCopy !== photo) analysisCopy.recycle()
 
-        val rejection = flow.checkPhoto(analysisImage)
+        val rejection = flow.checkPhoto(analysisImage, source)
         // A rejected photo is retaken anyway, so the model is not run on it.
-        val species = if (rejection == null) flow.checkSpecies(analysisImage) else SpeciesCheck.Unavailable
-        val historyPhoto = if (rejection == null) framedPhoto.scaledToLongSide(HISTORY_PHOTO_LONG_SIDE_PIXELS) else null
-        return PhotoCheck(framedPhoto, rejection, species, historyPhoto)
+        if (rejection != null) return PhotoCheck(photo, rejection, species = null, historyPhoto = null)
+        val species = flow.checkSpecies(analysisImage)
+        return PhotoCheck(photo, rejection = null, species, photo.scaledToLongSide(HISTORY_PHOTO_LONG_SIDE_PIXELS))
     }
 
-    /**
-     * Outcome of [checkPhoto]. [species] is only meaningful, and [historyPhoto] only set, when
-     * [rejection] is null.
-     */
+    /** Hands a finished [checkPhoto] to the shared flow and shows the new state. Main thread. */
+    private fun recordPhotoCheck(check: PhotoCheck, capturedAtEpochMillis: Long) {
+        if (check.rejection == null) {
+            acceptedPhoto = check.photo
+            addToHistory(HistoryEntry(checkNotNull(check.historyPhoto), checkNotNull(check.species), capturedAtEpochMillis))
+            flow.onPhotoChecked(rejection = null, checkNotNull(check.species))
+        } else {
+            check.photo.recycle()
+            flow.onPhotoChecked(check.rejection)
+        }
+        publishState()
+    }
+
+    /** Outcome of [checkPhoto]. [species] and [historyPhoto] are set exactly when [rejection] is null. */
     private class PhotoCheck(
-        val framedPhoto: Bitmap,
+        val photo: Bitmap,
         val rejection: RejectionReason?,
-        val species: SpeciesCheck,
+        val species: SpeciesCheck?,
         val historyPhoto: Bitmap?,
     )
 
     private companion object {
         const val TAG = "CaptureViewModel"
+
+        /**
+         * Long side of a library photo in memory: sharp enough for the result screen, and about
+         * 16 MB at most, however large the original is.
+         */
+        const val LIBRARY_PHOTO_LONG_SIDE_PIXELS = 2048
 
         /** Long side of a History photo: sharp enough for a History row, about 0.5 MB each. */
         const val HISTORY_PHOTO_LONG_SIDE_PIXELS = 512
